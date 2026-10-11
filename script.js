@@ -623,3 +623,456 @@
     }
 
     if (route === 'predictive-analytics') {
+              $('risk-slot').appendChild($('diagnostics-panel'));
+    }
+
+    Object.keys(routes).forEach(key => {
+      $('view-' + key).hidden = key !== route;
+      $('view-' + key).classList.toggle('active', key === route);
+    });
+
+    document.querySelectorAll('[data-nav]').forEach(item => {
+      const active = item.dataset.nav === route;
+
+      item.classList.toggle('active', active);
+
+      if (active) {
+        item.setAttribute('aria-current', 'page');
+      } else {
+        item.removeAttribute('aria-current');
+      }
+    });
+
+    $('page-title').textContent = routes[route][0];
+
+    const dot = document.createElement('span');
+    dot.className = 'title-dot';
+    $('page-title').appendChild(dot);
+
+    $('page-subtitle').textContent = routes[route][1];
+    document.title = routes[route][0] + ' — EV Monitor';
+
+    setMenu(false);
+
+    if (state && route === 'fault-history') {
+      renderHistory();
+    }
+
+    if (state && route === 'live-data') {
+      renderReadings(
+        state.readings.slice(-15).reverse(),
+        $('live-table')
+      );
+    }
+
+    if (userInitiated) {
+      animations.route($('view-' + route));
+
+      $('page-title').tabIndex = -1;
+      $('page-title').focus({ preventScroll: true });
+
+      window.scrollTo({
+        top: 0,
+        behavior: 'auto'
+      });
+    }
+
+    requestAnimationFrame(() => charts.resize());
+  }
+
+  function openRoute(name) {
+    if (location.hash === '#' + name) {
+      navigate(name, true);
+    } else {
+      location.hash = name;
+    }
+  }
+
+  function syncThemeControls(theme) {
+    $('theme-select').value = theme;
+
+    $('theme-toggle').setAttribute(
+      'aria-pressed',
+      String(theme === 'light')
+    );
+
+    $('theme-toggle').setAttribute(
+      'aria-label',
+      theme === 'dark'
+        ? 'Switch to light theme'
+        : 'Switch to dark theme'
+    );
+
+    document.querySelector('meta[name="theme-color"]').content =
+      theme === 'dark' ? '#020817' : '#edf3fa';
+  }
+
+  function setTheme(theme) {
+    if (!['dark', 'light'].includes(theme)) return;
+
+    const keys = [
+      '--bg',
+      '--panel',
+      '--panel-deep',
+      '--sidebar',
+      '--text',
+      '--muted',
+      '--faint',
+      '--line',
+      '--line-soft',
+      '--cyan',
+      '--blue',
+      '--violet',
+      '--green',
+      '--amber',
+      '--red'
+    ];
+
+    const old = Object.fromEntries(
+      keys.map(key => [
+        key,
+        getComputedStyle(document.documentElement)
+          .getPropertyValue(key)
+          .trim()
+      ])
+    );
+
+    animations.cancelTheme();
+    document.documentElement.dataset.theme = theme;
+
+    const next = Object.fromEntries(
+      keys.map(key => [
+        key,
+        getComputedStyle(document.documentElement)
+          .getPropertyValue(key)
+          .trim()
+      ])
+    );
+
+    storage.set('theme', theme);
+    syncThemeControls(theme);
+
+    animations.theme(old, next, () => charts.theme());
+  }
+
+  function downloadReport() {
+    try {
+      const report = source.report();
+
+      const blob = new Blob(
+        [JSON.stringify(report, null, 2)],
+        { type: 'application/json;charset=utf-8' }
+      );
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download =
+        'EV-Monitor-DEMO-' +
+        new Date().toISOString().replace(/[:.]/g, '-') +
+        '.json';
+
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+
+      toast(
+        'Demo report prepared: ' +
+        report.readings.length.toLocaleString() +
+        ' readings and ' +
+        report.events.length +
+        ' events.'
+      );
+    } catch (error) {
+      toast('Report could not be generated. Please try again.');
+      console.error('Report export failed:', error);
+    }
+  }
+
+  function openDialog(dialog) {
+    dialog.showModal();
+    animations.dialog(dialog);
+  }
+
+  function updateClock() {
+    const now = new Date();
+
+    $('date-label').textContent = now.toLocaleDateString([], {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
+    });
+
+    $('date-label').dateTime = now.toISOString();
+
+    $('time-label').textContent = now.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    $('time-label').dateTime = now.toISOString();
+  }
+
+  // Initialize the interface.
+  statusMarkup();
+  icons();
+  syncThemeControls(initialTheme);
+
+  $('motion-toggle').checked = animations.enabled;
+
+  navigate(location.hash.slice(1));
+
+  if (animations.allowed()) {
+    $('risk-progress').setAttribute('stroke-dashoffset', '100');
+    $('health-progress').setAttribute('stroke-dashoffset', '100');
+  }
+
+  const unsubscribe = source.subscribe(updateState);
+
+  animations.entrance();
+  animations.refreshAmbient();
+
+  updateClock();
+
+  const clockTimer = setInterval(updateClock, 1000);
+
+  // Routing and mobile navigation.
+  listen(window, 'hashchange', () => {
+    navigate(location.hash.slice(1), true);
+  });
+
+  listen($('menu-button'), 'click', () => {
+    setMenu(!menuOpen);
+  });
+
+  listen($('nav-scrim'), 'click', () => {
+    setMenu(false);
+  });
+
+  listen(window, 'resize', () => {
+    if (window.innerWidth > 900) {
+      setMenu(false);
+    } else {
+      $('sidebar').inert = !menuOpen;
+    }
+  });
+
+  listen(document, 'keydown', event => {
+    if (event.key === 'Escape' && menuOpen) {
+      setMenu(false);
+      $('menu-button').focus();
+    }
+  });
+
+  // Preferences.
+  listen($('theme-toggle'), 'click', () => {
+    setTheme(
+      document.documentElement.dataset.theme === 'dark'
+        ? 'light'
+        : 'dark'
+    );
+  });
+
+  listen($('theme-select'), 'change', event => {
+    setTheme(event.target.value);
+  });
+
+  listen($('motion-toggle'), 'change', event => {
+    storage.set('motion', event.target.checked ? 'on' : 'off');
+    animations.setEnabled(event.target.checked);
+
+    if (state) {
+      charts.update(state, true);
+    }
+  });
+
+  // Simulation controls.
+  listen($('simulation-button'), 'click', () => {
+    if (source.running) {
+      source.pause();
+    } else {
+      source.start();
+    }
+  });
+
+  listen($('reset-button'), 'click', () => {
+    source.reset();
+    toast('Reset to normal. Simulation paused; history retained.');
+  });
+
+  listen($('reset-view'), 'click', () => {
+    twin.reset();
+  });
+
+  listen($('ecu-systems'), 'click', event => {
+    const item = event.target.closest('[data-system]');
+
+    if (item) {
+      twin.select(item.dataset.system);
+    }
+  });
+
+  listen($('time-range'), 'change', event => {
+    charts.setRange(event.target.value);
+  });
+
+  // Fault scenario selector.
+  listen($('fault-button'), 'click', () => {
+    const radio = document.querySelector(
+      'input[name="scenario"][value="' + source.scenario + '"]'
+    );
+
+    if (radio) {
+      radio.checked = true;
+    }
+
+    openDialog($('fault-dialog'));
+  });
+
+  listen($('apply-scenario'), 'click', event => {
+    event.preventDefault();
+
+    const selected = document.querySelector(
+      'input[name="scenario"]:checked'
+    ).value;
+
+    source.setScenario(selected);
+    $('fault-dialog').close('apply');
+
+    toast(EV.SCENARIOS[selected].label + ' applied to the demo feed.');
+  });
+
+  // Shared actions.
+  document.querySelectorAll('[data-open-history]').forEach(button => {
+    listen(button, 'click', () => {
+      openRoute('fault-history');
+    });
+  });
+
+  document.querySelectorAll('[data-download]').forEach(button => {
+    listen(button, 'click', downloadReport);
+  });
+
+  // History filters and pagination.
+  document.querySelectorAll('[data-history-filter]').forEach(button => {
+    listen(button, 'click', () => {
+      historyFilter = button.dataset.historyFilter;
+      historyPage = 0;
+
+      document.querySelectorAll('[data-history-filter]').forEach(item => {
+        const active = item === button;
+
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-pressed', String(active));
+      });
+
+      renderHistory();
+    });
+  });
+
+  listen($('history-search'), 'input', event => {
+    historyQuery = event.target.value.trim().toLowerCase();
+    historyPage = 0;
+    renderHistory();
+  });
+
+  listen($('history-prev'), 'click', () => {
+    historyPage--;
+    renderHistory();
+  });
+
+  listen($('history-next'), 'click', () => {
+    historyPage++;
+    renderHistory();
+  });
+
+  // Notifications.
+  listen($('notification-button'), 'click', () => {
+    renderNotifications();
+
+    document.querySelector('.notification-dot').hidden = true;
+
+    $('notification-button').setAttribute(
+      'aria-label',
+      'Open notifications'
+    );
+
+    openDialog($('notifications-dialog'));
+  });
+
+  listen(
+    document.querySelector('[data-close-notifications]'),
+    'click',
+    () => $('notifications-dialog').close()
+  );
+
+  listen($('notification-history'), 'click', () => {
+    $('notifications-dialog').close();
+    openRoute('fault-history');
+  });
+
+  // Clicking the backdrop closes a dialog.
+  document.querySelectorAll('dialog').forEach(dialog => {
+    listen(dialog, 'click', event => {
+      if (event.target !== dialog) return;
+
+      const bounds = dialog.getBoundingClientRect();
+
+      if (
+        event.clientX < bounds.left ||
+        event.clientX > bounds.right ||
+        event.clientY < bounds.top ||
+        event.clientY > bounds.bottom
+      ) {
+        dialog.close();
+      }
+    });
+  });
+
+  // Graceful degradation if a CDN dependency is unavailable.
+  const missing = [];
+
+  if (!window.gsap) {
+    missing.push('GSAP unavailable: motion disabled');
+  }
+
+  if (!window.Chart) {
+    missing.push('Chart.js unavailable: using the SVG telemetry graph');
+  }
+
+  if (!window.lucide) {
+    missing.push('Lucide unavailable: text controls remain usable');
+  }
+
+  if (missing.length) {
+    $('dependency-warning').textContent =
+      missing.join('. ') +
+      '. Check your internet connection for the full visual experience.';
+
+    $('dependency-warning').hidden = false;
+  }
+
+  // BFCache restores keep the app instance; ordinary navigation cleans up.
+  listen(window, 'pagehide', event => {
+    if (event.persisted) {
+      source.pause();
+      return;
+    }
+
+    unsubscribe();
+    source.destroy();
+    charts.destroy();
+    twin.destroy();
+    animations.destroy();
+
+    clearInterval(clockTimer);
+    clearTimeout(toastTimer);
+
+    controller.abort();
+  });
+})();
+
