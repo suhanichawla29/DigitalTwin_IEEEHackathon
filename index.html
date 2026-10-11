@@ -1,0 +1,1216 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#020817">
+  <meta
+    name="description"
+    content="SKIT006 — simulated EV digital twin monitoring and diagnostic interface. No physical CAN connection or AI prediction."
+  >
+
+  <title>EV Monitor — Digital Twin & Predictive Diagnostics</title>
+
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Third-party libraries -->
+  <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+
+  <!-- Application scripts: keep this order -->
+  <script defer src="js/simulator.js"></script>
+  <script defer src="js/charts.js"></script>
+  <script defer src="js/digital-twin.js"></script>
+  <script defer src="js/animations.js"></script>
+  <script defer src="script.js"></script>
+</head>
+
+<body>
+  <a class="skip-link" href="#main">Skip to dashboard</a>
+
+  <div class="app-grid" aria-hidden="true"></div>
+
+  <button
+    class="nav-scrim"
+    id="nav-scrim"
+    aria-label="Close navigation"
+    hidden
+  ></button>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" href="#dashboard" aria-label="EV Monitor dashboard">
+      <span class="brand-mark">
+        <i data-lucide="zap"></i>
+      </span>
+
+      <span>
+        <strong>
+          EV Monitor<span class="brand-dot">.</span>
+        </strong>
+        <small>Digital Twin & Diagnostics</small>
+      </span>
+    </a>
+
+    <div class="workspace-label">
+      WORKSPACE
+      <span>SKIT006</span>
+    </div>
+
+    <nav class="nav-list">
+      <a
+        href="#dashboard"
+        data-nav="dashboard"
+        class="nav-item active"
+        aria-current="page"
+      >
+        <i data-lucide="layout-dashboard"></i>
+        <span>Dashboard</span>
+        <span class="nav-active-dot"></span>
+      </a>
+
+      <a
+        href="#digital-twin"
+        data-nav="digital-twin"
+        class="nav-item"
+      >
+        <i data-lucide="box"></i>
+        <span>Digital Twin</span>
+      </a>
+
+      <a
+        href="#live-data"
+        data-nav="live-data"
+        class="nav-item"
+      >
+        <i data-lucide="radio"></i>
+        <span>Live Data</span>
+        <span class="nav-tag">DEMO</span>
+      </a>
+
+      <a
+        href="#fault-history"
+        data-nav="fault-history"
+        class="nav-item"
+      >
+        <i data-lucide="clipboard-list"></i>
+        <span>Fault History</span>
+      </a>
+
+      <a
+        href="#predictive-analytics"
+        data-nav="predictive-analytics"
+        class="nav-item"
+      >
+        <i data-lucide="chart-no-axes-combined"></i>
+        <span>Predictive Analytics</span>
+      </a>
+
+      <a
+        href="#settings"
+        data-nav="settings"
+        class="nav-item"
+      >
+        <i data-lucide="settings-2"></i>
+        <span>Settings</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="connection-box">
+        <span class="status-dot" id="connection-dot"></span>
+
+        <div>
+          <strong id="connection-label">Demo feed ready</strong>
+          <small>Local simulator · no CAN link</small>
+          <small id="last-updated">Awaiting simulation</small>
+        </div>
+      </div>
+
+      <svg
+        class="sidebar-wave energy-wave"
+        viewBox="0 0 260 65"
+        aria-hidden="true"
+      >
+        <g class="wave-track" fill="none">
+          <path
+            d="M-260 35 Q-227 3 -195 35 T-130 35 T-65 35 T0 35 T65 35 T130 35 T195 35 T260 35 T325 35 T390 35 T455 35 T520 35"
+          />
+          <path
+            d="M-260 33 Q-227 60 -195 33 T-130 33 T-65 33 T0 33 T65 33 T130 33 T195 33 T260 33 T325 33 T390 33 T455 33 T520 33"
+          />
+        </g>
+      </svg>
+
+      <p class="sidebar-motto">
+        Intelligence in motion.<br>
+        <span>Confidence in every journey.</span>
+      </p>
+
+      <div class="sidebar-footer">
+        <span class="avatar">EV</span>
+
+        <span>
+          Research workspace
+          <small>Simulated environment</small>
+        </span>
+
+        <i data-lucide="shield-check"></i>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <main id="main" class="main" tabindex="-1">
+    <!-- Header -->
+    <header class="topbar">
+      <div class="heading-group">
+        <button
+          id="menu-button"
+          class="icon-button mobile-menu"
+          aria-label="Open navigation"
+          aria-expanded="false"
+          aria-controls="sidebar"
+        >
+          <i data-lucide="menu"></i>
+        </button>
+
+        <div>
+          <div class="eyebrow">
+            VEHICLE INTELLIGENCE
+            <span>/</span>
+            OVERVIEW
+          </div>
+
+          <h1 id="page-title">
+            EV System Overview<span class="title-dot"></span>
+          </h1>
+
+          <p id="page-subtitle">
+            Real-time vehicle intelligence at a glance
+          </p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="clock">
+          <time id="date-label"></time>
+
+          <span>
+            <i data-lucide="clock-3"></i>
+            <time id="time-label"></time>
+          </span>
+        </div>
+
+        <span class="header-divider"></span>
+
+        <button
+          class="theme-toggle"
+          id="theme-toggle"
+          aria-label="Switch to light theme"
+          aria-pressed="false"
+        >
+          <i data-lucide="sun"></i>
+          <i data-lucide="moon"></i>
+          <span class="theme-thumb"></span>
+        </button>
+
+        <button
+          id="notification-button"
+          class="icon-button notification-button"
+          aria-label="Open notifications"
+        >
+          <i data-lucide="bell"></i>
+          <span class="notification-dot" hidden></span>
+        </button>
+      </div>
+    </header>
+
+    <div class="demo-banner">
+      <div>
+        <span class="demo-badge">
+          <span></span>
+          DEMO ENVIRONMENT
+        </span>
+
+        <span class="demo-description">
+          Synthetic telemetry. No physical ECU connection or AI predictions.
+        </span>
+      </div>
+
+      <span class="session-state" id="session-state">
+        SIMULATOR PAUSED
+      </span>
+    </div>
+
+    <p
+      id="dependency-warning"
+      class="dependency-warning"
+      role="status"
+      hidden
+    ></p>
+
+    <!-- Dashboard view -->
+    <section
+      class="view active"
+      id="view-dashboard"
+      aria-label="Dashboard"
+    >
+      <!-- Metric cards -->
+      <div class="metrics-grid">
+        <article
+          class="metric-card"
+          style="--accent:var(--cyan)"
+          data-metric="voltage"
+        >
+          <div class="metric-top">
+            <span class="metric-icon">
+              <i data-lucide="zap"></i>
+            </span>
+
+            <span class="metric-name">Battery Voltage</span>
+            <span class="metric-code">HV</span>
+          </div>
+
+          <div class="metric-reading">
+            <strong id="value-voltage">348</strong>
+            <span>V</span>
+            <span class="metric-trend" id="trend-voltage">—</span>
+          </div>
+
+          <div class="metric-bottom">
+            <span id="note-voltage">Demo operating band</span>
+
+            <svg
+              class="sparkline"
+              data-spark="voltage"
+              viewBox="0 0 155 32"
+              aria-hidden="true"
+            >
+              <path/>
+            </svg>
+          </div>
+        </article>
+
+        <article
+          class="metric-card"
+          style="--accent:var(--violet)"
+          data-metric="current"
+        >
+          <div class="metric-top">
+            <span class="metric-icon">
+              <i data-lucide="gauge"></i>
+            </span>
+
+            <span class="metric-name">Current</span>
+            <span class="metric-code">DC</span>
+          </div>
+
+          <div class="metric-reading">
+            <strong id="value-current">32</strong>
+            <span>A</span>
+            <span class="metric-trend" id="trend-current">—</span>
+          </div>
+
+          <div class="metric-bottom">
+            <span id="note-current">Demo operating band</span>
+
+            <svg
+              class="sparkline"
+              data-spark="current"
+              viewBox="0 0 155 32"
+              aria-hidden="true"
+            >
+              <path/>
+            </svg>
+          </div>
+        </article>
+
+        <article
+          class="metric-card"
+          style="--accent:var(--amber)"
+          data-metric="temperature"
+        >
+          <div class="metric-top">
+            <span class="metric-icon">
+              <i data-lucide="thermometer"></i>
+            </span>
+
+            <span class="metric-name">Temperature</span>
+            <span class="metric-code">TH</span>
+          </div>
+
+          <div class="metric-reading">
+            <strong id="value-temperature">36</strong>
+            <span>°C</span>
+            <span class="metric-trend" id="trend-temperature">—</span>
+          </div>
+
+          <div class="metric-bottom">
+            <span id="note-temperature">Demo operating band</span>
+
+            <svg
+              class="sparkline"
+              data-spark="temperature"
+              viewBox="0 0 155 32"
+              aria-hidden="true"
+            >
+              <path/>
+            </svg>
+          </div>
+        </article>
+
+        <article
+          class="metric-card"
+          style="--accent:var(--green)"
+          data-metric="health"
+        >
+          <div class="metric-top">
+            <span class="metric-icon">
+              <i data-lucide="heart-pulse"></i>
+            </span>
+
+            <span class="metric-name">ECU Health</span>
+            <span class="metric-code">DEMO</span>
+          </div>
+
+          <div class="metric-reading">
+            <strong id="value-health">92</strong>
+            <span>/ 100</span>
+            <span id="health-badge" class="pill normal">Normal</span>
+          </div>
+
+          <div class="metric-bottom">
+            <span>Illustrative score · not measured</span>
+
+            <svg
+              class="sparkline"
+              data-spark="health"
+              viewBox="0 0 155 32"
+              aria-hidden="true"
+            >
+              <path/>
+            </svg>
+          </div>
+        </article>
+      </div>
+
+      <!-- Dashboard panels -->
+      <div class="dashboard-grid">
+        <!-- Digital twin -->
+        <section class="panel twin-panel" id="twin-panel">
+          <div class="panel-header">
+            <div>
+              <h2>
+                Digital Twin
+                <span class="subtle-badge">EV–01</span>
+              </h2>
+
+              <p>Explore the systems behind every signal</p>
+            </div>
+
+            <span class="tiny-label">
+              <span class="status-dot"></span>
+              SVG ILLUSTRATION
+            </span>
+          </div>
+
+          <div class="twin-content">
+            <div
+              class="systems-list"
+              id="ecu-systems"
+              aria-label="ECU system status"
+            ></div>
+
+            <div
+              id="vehicle-stage"
+              class="vehicle-stage"
+              tabindex="0"
+              role="group"
+              aria-label="Interactive vehicle illustration. Use arrow keys to adjust the view, Home to reset."
+            ></div>
+          </div>
+
+          <div class="twin-footer">
+            <span>
+              <i data-lucide="hand"></i>
+              Drag to tilt · select a component
+            </span>
+
+            <button class="text-button" id="reset-view">
+              <i data-lucide="rotate-ccw"></i>
+              Reset view
+            </button>
+
+            <span class="twin-coordinate">
+              X 024.8 &nbsp; Y 012.6 &nbsp; Z 000.0
+              <span>ILLUSTRATIVE</span>
+            </span>
+          </div>
+
+          <div
+            class="component-detail"
+            id="component-detail"
+            role="status"
+          >
+            Select a component to inspect its demo status.
+          </div>
+        </section>
+
+        <!-- Alerts and risk -->
+        <aside class="panel diagnostics-panel" id="diagnostics-panel">
+          <div class="panel-header">
+            <h2>
+              <i data-lucide="bell-ring"></i>
+              Active Alerts
+            </h2>
+
+            <button class="text-button" data-open-history>
+              History
+              <i data-lucide="arrow-up-right"></i>
+            </button>
+          </div>
+
+          <div
+            class="alert-box normal"
+            id="alert-box"
+            role="status"
+            aria-live="polite"
+          >
+            <i data-lucide="circle-check"></i>
+
+            <div>
+              <strong id="alert-title">No active demo faults</strong>
+              <p id="alert-description">
+                All simulated systems are within demo limits.
+              </p>
+            </div>
+          </div>
+
+          <div class="risk-heading">
+            <h2>
+              <i data-lucide="brain-circuit"></i>
+              Predicted Risk
+            </h2>
+
+            <span class="subtle-badge">DEMO</span>
+          </div>
+
+          <div class="risk-body">
+            <div
+              class="ring risk-ring"
+              role="img"
+              aria-label="Simulated risk 12 percent"
+              id="risk-ring-container"
+            >
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle
+                  class="ring-track"
+                  cx="60"
+                  cy="60"
+                  r="50"
+                />
+
+                <circle
+                  class="ring-progress"
+                  id="risk-progress"
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  pathLength="100"
+                  stroke-dasharray="100"
+                  stroke-dashoffset="88"
+                />
+              </svg>
+
+              <div class="ring-value">
+                <strong id="risk-value">12<span>%</span></strong>
+              </div>
+            </div>
+
+            <div>
+              <strong id="risk-label" class="risk-label">Low risk</strong>
+              <p id="risk-explanation">
+                Normal demo scenario.<br>
+                No immediate simulated fault.
+              </p>
+            </div>
+          </div>
+
+          <p class="risk-disclaimer">
+            <i data-lucide="info"></i>
+            Illustrative scenario score. Not an ML prediction or a safety assessment.
+          </p>
+
+          <div class="diagnostic-bottom">
+            <span>Diagnostics source</span>
+            <strong>Local demo rules</strong>
+          </div>
+        </aside>
+
+        <!-- Sensor chart -->
+        <section class="panel sensor-panel" id="sensor-panel">
+          <div class="panel-header">
+            <h2>
+              <i data-lucide="activity"></i>
+              Live Sensor Readings
+            </h2>
+
+            <label class="range-control">
+              <span class="sr-only">Chart time range</span>
+
+              <select id="time-range">
+                <option value="1">Last 1 min</option>
+                <option value="5" selected>Last 5 min</option>
+                <option value="30">Last 30 min</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="chart-legend">
+            <span>
+              <b class="legend-dot cyan"></b>
+              Voltage
+              <small>V · left axis</small>
+            </span>
+
+            <span>
+              <b class="legend-dot violet"></b>
+              Current
+              <small>A · right axis</small>
+            </span>
+
+            <span>
+              <b class="legend-dot amber"></b>
+              Temperature
+              <small>°C · right axis</small>
+            </span>
+
+            <span class="chart-live" id="chart-live">PAUSED</span>
+          </div>
+
+          <div class="chart-container">
+            <canvas
+              id="sensor-chart"
+              role="img"
+              aria-label="Synthetic voltage, current, and temperature readings plotted over time"
+            ></canvas>
+
+            <svg
+              id="chart-fallback"
+              viewBox="0 0 600 200"
+              role="img"
+              aria-label="Fallback sensor graph"
+              hidden
+            ></svg>
+          </div>
+
+          <div class="chart-footer">
+            <span>
+              2 s sampling
+              <span>·</span>
+              independently scaled, labelled axes
+            </span>
+
+            <span id="sample-count">0 samples</span>
+          </div>
+        </section>
+
+        <!-- System overview -->
+        <section class="panel overview-panel" id="overview-panel">
+          <div class="panel-header">
+            <h2>
+              <i data-lucide="scan-heart"></i>
+              System Overview
+            </h2>
+
+            <span class="subtle-badge">DEMO</span>
+          </div>
+
+          <div class="overview-body">
+            <div
+              class="ring health-ring"
+              id="health-ring-container"
+              role="img"
+              aria-label="Demo health 92 percent"
+            >
+              <svg viewBox="0 0 120 120" aria-hidden="true">
+                <defs>
+                  <linearGradient
+                    id="health-gradient"
+                    x1="0"
+                    y1="0"
+                    x2="1"
+                    y2="1"
+                  >
+                    <stop stop-color="#00d9ff"/>
+                    <stop offset="1" stop-color="#27d49b"/>
+                  </linearGradient>
+                </defs>
+
+                <circle
+                  class="ring-track"
+                  cx="60"
+                  cy="60"
+                  r="50"
+                />
+
+                <circle
+                  class="ring-progress"
+                  id="health-progress"
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  pathLength="100"
+                  stroke-dasharray="100"
+                  stroke-dashoffset="8"
+                />
+              </svg>
+
+              <div class="ring-value">
+                <strong id="overview-health">92%</strong>
+                <small>Demo health</small>
+              </div>
+            </div>
+
+            <div id="overview-systems" class="overview-systems"></div>
+          </div>
+
+          <svg
+            class="overview-wave energy-wave"
+            viewBox="0 0 400 55"
+            aria-hidden="true"
+          >
+            <g class="wave-track" fill="none">
+              <path
+                d="M-400 28 Q-350 0 -300 28 T-200 28 T-100 28 T0 28 T100 28 T200 28 T300 28 T400 28 T500 28 T600 28 T700 28 T800 28"
+              />
+              <path
+                d="M-400 28 Q-350 52 -300 28 T-200 28 T-100 28 T0 28 T100 28 T200 28 T300 28 T400 28 T500 28 T600 28 T700 28 T800 28"
+              />
+            </g>
+          </svg>
+        </section>
+
+        <!-- Quick actions -->
+        <section class="panel actions-panel">
+          <div class="panel-header">
+            <h2>Quick Actions</h2>
+            <i data-lucide="command"></i>
+          </div>
+
+          <button
+            class="action-button primary"
+            id="simulation-button"
+          >
+            <i data-lucide="play"></i>
+            <span>Start Simulation</span>
+            <kbd>DEMO</kbd>
+          </button>
+
+          <button class="action-button" id="fault-button">
+            <i data-lucide="triangle-alert"></i>
+            Simulate Fault
+            <i data-lucide="chevron-right" class="end-icon"></i>
+          </button>
+
+          <button class="action-button" data-open-history>
+            <i data-lucide="history"></i>
+            View History
+          </button>
+
+          <button class="action-button" data-download>
+            <i data-lucide="download"></i>
+            Download Report
+          </button>
+
+          <button
+            class="text-button reset-simulation"
+            id="reset-button"
+          >
+            <i data-lucide="rotate-ccw"></i>
+            Reset Simulation
+          </button>
+        </section>
+      </div>
+    </section>
+
+    <!-- Dedicated digital twin view -->
+    <section
+      class="view"
+      id="view-digital-twin"
+      aria-label="Digital Twin"
+      hidden
+    >
+      <div class="focus-intro">
+        <span class="pill">COMPONENT EXPLORER</span>
+
+        <p>
+          Inspect the five monitored systems. This vector illustration
+          is not a physical or engineering simulation.
+        </p>
+      </div>
+
+      <div id="twin-slot"></div>
+    </section>
+
+    <!-- Live data view -->
+    <section
+      class="view"
+      id="view-live-data"
+      aria-label="Live data"
+      hidden
+    >
+      <div id="chart-slot"></div>
+
+      <section class="panel data-panel">
+        <div class="panel-header">
+          <h2>Recent telemetry</h2>
+          <span class="subtle-badge">SYNTHETIC</span>
+        </div>
+
+        <div class="table-scroll">
+          <table>
+            <caption class="sr-only">
+              Most recent demo readings
+            </caption>
+
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Voltage</th>
+                <th>Current</th>
+                <th>Temperature</th>
+                <th>Health · demo</th>
+                <th>Scenario</th>
+              </tr>
+            </thead>
+
+            <tbody id="live-table"></tbody>
+          </table>
+        </div>
+      </section>
+    </section>
+
+    <!-- History view -->
+    <section
+      class="view"
+      id="view-fault-history"
+      aria-label="Fault history"
+      hidden
+    >
+      <section class="panel history-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Session History</h2>
+            <p>Local readings and events · cleared on page reload</p>
+          </div>
+
+          <button class="button" data-download>
+            <i data-lucide="download"></i>
+            Export JSON
+          </button>
+        </div>
+
+        <div class="history-summary" id="history-summary"></div>
+
+        <div
+          class="history-tabs"
+          role="group"
+          aria-label="History filter"
+        >
+          <button
+            class="chip active"
+            data-history-filter="events"
+            aria-pressed="true"
+          >
+            Events
+          </button>
+
+          <button
+            class="chip"
+            data-history-filter="readings"
+            aria-pressed="false"
+          >
+            Readings
+          </button>
+
+          <label class="history-search">
+            <i data-lucide="search"></i>
+
+            <input
+              id="history-search"
+              type="search"
+              placeholder="Filter scenario or event"
+              aria-label="Filter history"
+            >
+          </label>
+        </div>
+
+        <p class="muted" id="history-count"></p>
+
+        <div class="table-scroll">
+          <table>
+            <caption class="sr-only">Simulation history</caption>
+            <thead id="history-head"></thead>
+            <tbody id="history-table"></tbody>
+          </table>
+        </div>
+
+        <div class="pagination">
+          <button class="button" id="history-prev">Previous</button>
+          <span id="history-page"></span>
+          <button class="button" id="history-next">Next</button>
+        </div>
+      </section>
+    </section>
+
+    <!-- Predictive analytics view -->
+    <section
+      class="view"
+      id="view-predictive-analytics"
+      aria-label="Predictive analytics"
+      hidden
+    >
+      <div class="analytics-layout">
+        <div id="risk-slot"></div>
+
+        <section class="panel rule-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Transparent diagnostics</h2>
+              <p>Scenario-driven demonstration · no trained model</p>
+            </div>
+
+            <i data-lucide="workflow"></i>
+          </div>
+
+          <p>
+            The simulator classifies synthetic samples using the demo
+            thresholds below. Health and risk are illustrative lookup
+            values, not probabilities, equipment health measurements,
+            or vehicle safety guidance.
+          </p>
+
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Demo state</th>
+                  <th>Demo trigger</th>
+                  <th>Risk</th>
+                  <th>Health</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr>
+                  <td>Normal</td>
+                  <td>None of the demo triggers</td>
+                  <td>12%</td>
+                  <td>92/100</td>
+                </tr>
+
+                <tr>
+                  <td>Over-temperature</td>
+                  <td>Temperature ≥ 60 °C</td>
+                  <td>64%</td>
+                  <td>68/100</td>
+                </tr>
+
+                <tr>
+                  <td>Under-voltage</td>
+                  <td>Voltage ≤ 300 V</td>
+                  <td>72%</td>
+                  <td>61/100</td>
+                </tr>
+
+                <tr>
+                  <td>Over-current</td>
+                  <td>Current ≥ 80 A</td>
+                  <td>86%</td>
+                  <td>48/100</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="integration-note">
+            <i data-lucide="unplug"></i>
+
+            <div>
+              <strong>Ready for a future data adapter</strong>
+
+              <p>
+                A replaceable source contract separates readings from
+                presentation. Backend CAN decoding and a validated
+                diagnostic model are not connected.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- Settings view -->
+    <section
+      class="view"
+      id="view-settings"
+      aria-label="Settings"
+      hidden
+    >
+      <section class="panel settings-panel">
+        <div class="panel-header">
+          <div>
+            <h2>Workspace Settings</h2>
+            <p>Presentation preferences for this browser</p>
+          </div>
+
+          <i data-lucide="settings-2"></i>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <strong>Color theme</strong>
+            <p>Choose your preferred dashboard appearance.</p>
+          </div>
+
+          <select id="theme-select" aria-label="Color theme">
+            <option value="dark">Dark navy</option>
+            <option value="light">Light</option>
+          </select>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <strong>Ambient motion</strong>
+
+            <p>
+              Enable scanning, waves, and component pulses.
+              Your device’s reduced-motion preference always takes priority.
+            </p>
+          </div>
+
+          <label class="switch">
+            <input id="motion-toggle" type="checkbox" checked>
+            <span></span>
+            <span class="sr-only">Enable ambient motion</span>
+          </label>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <strong>Telemetry source</strong>
+
+            <p>
+              Synthetic readings generated locally every 2 seconds.
+              No network data source is connected.
+            </p>
+          </div>
+
+          <span class="pill">LOCAL DEMO</span>
+        </div>
+
+        <div class="setting-row">
+          <div>
+            <strong>Session storage</strong>
+
+            <p>
+              Readings and events stay in memory; export before reloading.
+              The latest 50,000 readings and 5,000 events are retained.
+            </p>
+          </div>
+
+          <button class="button" data-download>Export session</button>
+        </div>
+
+        <div class="project-note">
+          <span class="eyebrow">RESEARCH PROJECT · SKIT006</span>
+
+          <h3>
+            Digital Twin-Based Predictive Diagnostics for EV ECUs Using CAN
+          </h3>
+
+          <p>
+            This interface is a simulated monitoring prototype,
+            not a vehicle diagnostic tool.
+          </p>
+        </div>
+      </section>
+    </section>
+
+    <footer class="page-footer">
+      <span>
+        EV MONITOR
+        <span> / </span>
+        DIGITAL TWIN PLATFORM
+      </span>
+
+      <span>
+        SKIT006
+        <span>·</span>
+        Research prototype
+        <span class="footer-dot"></span>
+        Demo only
+      </span>
+    </footer>
+  </main>
+
+  <!-- Fault scenario dialog -->
+  <dialog id="fault-dialog" class="modal">
+    <form method="dialog">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">SCENARIO CONTROL</span>
+          <h2>Simulate a condition</h2>
+        </div>
+
+        <button
+          class="icon-button"
+          value="cancel"
+          aria-label="Close fault selector"
+        >
+          <i data-lucide="x"></i>
+        </button>
+      </div>
+
+      <p>
+        Apply one demo scenario at a time. The same sample updates
+        telemetry, ECU states, vehicle highlights, charts, and diagnostics.
+      </p>
+
+      <div class="scenario-options">
+        <label>
+          <input
+            type="radio"
+            name="scenario"
+            value="normal"
+            checked
+          >
+
+          <span class="scenario-icon normal">
+            <i data-lucide="shield-check"></i>
+          </span>
+
+          <span>
+            <strong>Normal operation</strong>
+            <small>348 V · 32 A · 36 °C nominal</small>
+          </span>
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="scenario"
+            value="over-temperature"
+          >
+
+          <span class="scenario-icon warning">
+            <i data-lucide="thermometer"></i>
+          </span>
+
+          <span>
+            <strong>Over-temperature</strong>
+            <small>Thermal system & BMS · approx. 72 °C</small>
+          </span>
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="scenario"
+            value="under-voltage"
+          >
+
+          <span class="scenario-icon warning">
+            <i data-lucide="battery-low"></i>
+          </span>
+
+          <span>
+            <strong>Under-voltage</strong>
+            <small>Battery system & BMS · approx. 276 V</small>
+          </span>
+        </label>
+
+        <label>
+          <input
+            type="radio"
+            name="scenario"
+            value="over-current"
+          >
+
+          <span class="scenario-icon critical">
+            <i data-lucide="zap"></i>
+          </span>
+
+          <span>
+            <strong>Over-current</strong>
+            <small>Motor controller & VCU · approx. 96 A</small>
+          </span>
+        </label>
+      </div>
+
+      <p class="modal-note">
+        Applies a sample immediately. Continuous sampling only runs
+        after Start Simulation.
+      </p>
+
+      <div class="modal-footer">
+        <button class="button" value="cancel">Cancel</button>
+
+        <button
+          class="button primary"
+          id="apply-scenario"
+          value="apply"
+        >
+          Apply scenario
+          <i data-lucide="arrow-right"></i>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Notifications dialog -->
+  <dialog id="notifications-dialog" class="modal">
+    <div class="modal-heading">
+      <div>
+        <span class="eyebrow">SESSION NOTIFICATIONS</span>
+        <h2>Recent events</h2>
+      </div>
+
+      <button
+        class="icon-button"
+        data-close-notifications
+        aria-label="Close notifications"
+      >
+        <i data-lucide="x"></i>
+      </button>
+    </div>
+
+    <div id="notification-list"></div>
+
+    <div class="modal-footer">
+      <button class="button" id="notification-history">
+        Open full history
+        <i data-lucide="arrow-right"></i>
+      </button>
+    </div>
+  </dialog>
+
+  <div
+    class="toast"
+    id="toast"
+    role="status"
+    aria-live="polite"
+    hidden
+  ></div>
+
+  <noscript>
+    <div class="noscript">
+      Enable JavaScript to run the EV monitoring prototype.
+    </div>
+  </noscript>
+</body>
+</html>
