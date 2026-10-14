@@ -84,8 +84,7 @@
       'Make this monitoring workspace your own'
     ]
   };
-
-  const source = new EV.DemoSource();
+const source = new EV.ApiSource();
 
   const initialTheme =
     storage.get('theme', 'dark') === 'light' ? 'light' : 'dark';
