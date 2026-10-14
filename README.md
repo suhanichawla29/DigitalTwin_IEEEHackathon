@@ -76,3 +76,13 @@ validated mapping exists, so live frames show “Not evaluated — incompatible
 features” rather than a fabricated normal/anomaly result. The
 `POST /api/can/anomaly` endpoint accepts compatible SynCAN-format records and
 returns an IsolationForest anomaly flag and decision score, not a probability.
+To evaluate the existing saved artifact against the official test archives
+without retraining or overwriting it, run from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe backend\training\train_syncan_model.py --evaluate-only
+```
+
+The report identifies `Label=0` as normal and `Label=1` as intrusion and
+includes the confusion matrix, precision, recall, F1, false positives, and
+missed intrusions.
