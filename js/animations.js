@@ -175,7 +175,7 @@
 
         const twin = document.getElementById('twin-panel');
 
-        if (!twin.closest('[hidden]') && twin.querySelector('.scanner')) {
+        if (!twin.closest('[hidden]')) {
           root.gsap.fromTo(
             '.scanner',
             { x: 0 },
@@ -387,11 +387,9 @@
 
       const targets = ids.flatMap(id => Array.from(
         document.querySelectorAll(
-          '.system-item[data-system="' + id + '"]'
+          '.twin-component[data-component="' + id + '"]'
         )
       ));
-
-      if (!targets.length) return;
 
       this.track(
         root.gsap.fromTo(
