@@ -17,7 +17,7 @@ def make_frame(voltage, current, temperature):
 
 class DecoderTests(unittest.TestCase):
     def test_dbc_encoder_round_trips_supported_telemetry(self):
-        frame = make_frame(400.04, 35.05, 45.06)
+        frame = make_frame(400.04, 35.06, 45.06)
         result = decode_can_frame(0x100, frame)
 
         self.assertEqual(len(frame), 8)
