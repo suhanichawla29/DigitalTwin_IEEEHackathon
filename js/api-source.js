@@ -25,6 +25,7 @@
       this.current = null;
       this.scenario = 'normal';
       this.busy = false;
+      this.lastFaultKey = '';
     }
 
     subscribe(callback) {
@@ -40,28 +41,76 @@
       try {
         const raw = await getReadings();
 
+        const apiDiagnostics = raw.diagnostics || {};
+        const apiFaults = Array.isArray(apiDiagnostics.faults)
+          ? apiDiagnostics.faults
+          : [];
+
+        const primaryFault = apiFaults[0] || null;
+        const hasFaults =
+          apiDiagnostics.status === 'FAULT' || apiFaults.length > 0;
+
+        const codeMap = {
+          'over-temperature': 'over-temperature',
+          'over-current': 'over-current',
+          'under-voltage': 'under-voltage',
+          'over-voltage': 'over-voltage'
+        };
+
+        const label = primaryFault
+          ? primaryFault.label
+          : 'Normal operation';
+
+        const description = primaryFault
+          ? primaryFault.description
+          : (apiDiagnostics.message || 'No demo fault rules were triggered.');
+
+        const severity = primaryFault
+          ? primaryFault.severity
+          : 'normal';
+
+        const health = hasFaults
+          ? (severity === 'critical' ? 45 : 70)
+          : 92;
+
+        const diagnostics = {
+          code: primaryFault
+            ? (codeMap[primaryFault.code] || primaryFault.code)
+            : 'normal',
+          label,
+          severity,
+          description,
+          risk: hasFaults
+            ? (severity === 'critical' ? 85 : 55)
+            : 8,
+          health,
+          faults: apiFaults,
+          systems: {
+            battery: apiFaults.some(f =>
+              ['under-voltage', 'over-voltage'].includes(f.code)
+            ) ? 'warning' : 'normal',
+
+            motor: apiFaults.some(f =>
+              f.code === 'over-current'
+            ) ? 'critical' : 'normal',
+
+            thermal: apiFaults.some(f =>
+              f.code === 'over-temperature'
+            ) ? 'critical' : 'normal',
+
+            communication: 'normal'
+          }
+        };
+
         const reading = {
           timestamp: Date.now(),
           voltage: Number(raw.voltage),
           current: Number(raw.current),
           temperature: Number(raw.temperature),
-          health: 92,
+          health,
           scenario: this.scenario,
           seeded: false,
-          diagnostics: {
-            code: 'normal',
-            label: 'Normal operation',
-            severity: 'normal',
-            description: 'Readings received from the Python API.',
-            risk: 8,
-            health: 92,
-            systems: {
-              battery: 'normal',
-              motor: 'normal',
-              thermal: 'normal',
-              communication: 'normal'
-            }
-          }
+          diagnostics
         };
 
         if (
@@ -78,6 +127,29 @@
         if (this.readings.length > 300) {
           this.readings.shift();
         }
+
+        // Add an event only when the detected fault set changes.
+        const faultKey = apiFaults
+          .map(f => f.code)
+          .sort()
+          .join(',');
+
+        if (faultKey && faultKey !== this.lastFaultKey) {
+          this.events.unshift({
+            timestamp: reading.timestamp,
+            type: 'fault',
+            title: apiFaults.map(f => f.label).join(', '),
+            scenario: this.scenario,
+            severity,
+            message: description
+          });
+
+          if (this.events.length > 100) {
+            this.events.pop();
+          }
+        }
+
+        this.lastFaultKey = faultKey;
 
         const state = {
           current: reading,
@@ -114,13 +186,14 @@
       this.events = [];
       this.current = null;
       this.scenario = 'normal';
+      this.lastFaultKey = '';
       this.start();
     }
 
     setScenario(scenario) {
       this.scenario = scenario;
       console.warn(
-        'Scenario changes are not yet implemented in the Python API.'
+        'Scenario selection is not yet connected to the Python API.'
       );
     }
 
