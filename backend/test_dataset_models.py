@@ -8,7 +8,7 @@ import numpy as np
 from scipy.io import savemat
 
 from battery_predictor import BatteryCapacityPredictor
-from main import get_dataset_model_status
+from main import _model_readiness, get_dataset_model_status
 from syncan_predictor import SIGNAL_COUNTS, SynCANPredictor, record_features
 from training.prepare_nasa_data import (
     FEATURE_NAMES,
@@ -190,7 +190,17 @@ class DatasetModelTests(unittest.TestCase):
             )
             self.assertTrue(artifact.is_file())
             self.assertEqual(set(metadata["training_rows_fitted_by_id"]), set(SIGNAL_COUNTS))
-            self.assertTrue(predictor.reload())
+            status = _model_readiness(
+                predictor,
+                dataset_status={
+                    "available_count": len(SIGNAL_COUNTS),
+                    "directory": "backend\\data\\synCAN",
+                },
+                minimum_inputs=len(SIGNAL_COUNTS),
+                training_command="train_syncan_model.py",
+                source_url="https://github.com/etas/SynCAN",
+            )
+            self.assertEqual(status["status"], "ready")
             self.assertIsNone(predictor.error)
             self.assertEqual(len(predictor.models), len(SIGNAL_COUNTS))
             result = predictor.score({

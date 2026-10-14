@@ -42,6 +42,14 @@ The four filenames above are the expected NASA runs. The NASA catalog may not
 provide direct downloads; if so, use the NASA Ames PCoE official dataset
 download channel. Do not substitute unverified mirrors.
 
+On 2026-10-14, the official catalog API returned zero downloadable resources
+for this dataset. The legacy PCoE repository URL redirected to NASA's current
+PCoE data-set repository, whose listed battery archive was not verified as
+these four Li-ion aging runs. No substitute archive was downloaded. Obtain the
+original `B0005.mat`, `B0006.mat`, `B0007.mat`, and `B0018.mat` files through
+the official NASA Ames PCoE channel and place them unchanged in
+`backend\data\nasa`.
+
 ## ETAS SynCAN
 
 Official repository: <https://github.com/etas/SynCAN>. Its CSV data uses
@@ -79,8 +87,10 @@ New-Item -ItemType Directory -Force backend\data\nasa, backend\data\synCAN | Out
 
 For NASA, download the original `B0005.mat`, `B0006.mat`, `B0007.mat`, and
 `B0018.mat` files from the official NASA Ames PCoE channel, then copy them into
-`backend\data\nasa`. The catalog page may not expose direct file links; do not
-use an unverified mirror.
+`backend\data\nasa`. The current catalog page has no direct file links for
+these runs; if they are not available from the PCoE repository, request the
+original four run files through NASA Ames PCoE. Do not use an unverified mirror
+or substitute a different NASA battery archive.
 
 For SynCAN, clone the official repository and copy its archives into the
 project data folder:
