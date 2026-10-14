@@ -178,6 +178,7 @@ class SimulationState:
     def advance(self):
         rates = self._rates()
         reading = {}
+        maximum = {"voltage": 1000.0, "current": 1000.0, "temperature": 200.0}
         for signal, value in self.values.items():
             rate = rates[signal]
             if rate == 0:
@@ -194,11 +195,17 @@ class SimulationState:
 
             self.values[signal] = max(
                 0.0,
-                min(1000.0, value + rate),
+                min(maximum[signal], value + rate),
             )
             reading[signal] = round(
-                self.values[signal] +
-                self.random.gauss(0, self.NOISE[signal]),
+                max(
+                    0.0,
+                    min(
+                        maximum[signal],
+                        self.values[signal] +
+                        self.random.gauss(0, self.NOISE[signal]),
+                    ),
+                ),
                 2,
             )
 

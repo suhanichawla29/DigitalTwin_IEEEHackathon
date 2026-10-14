@@ -2240,6 +2240,23 @@ td.empty { padding: 40px; text-align: center; }
 
 @media (max-width: 600px) {
   .dataset-model-status { grid-template-columns: 1fr; }
+  .can-monitor-panel { margin-top: 14px; }
+  .can-monitor-header { gap: 8px; }
+  .can-monitor-header p { font-size: 8px; }
+  .can-simulated-badge { padding: 5px 7px; font-size: 7px; }
+  .can-monitor-toolbar { margin-inline: 12px; gap: 7px; }
+  .can-filter { min-width: 100%; max-width: none; }
+  .can-monitor-count { width: 100%; }
+  .can-control { font-size: 8px; }
+  .can-subsection > h3,
+  .can-history-heading { margin-inline: 12px; }
+  .can-table-scroll { margin-inline: 12px; }
+  .can-message-detail {
+    grid-template-columns: 1fr;
+    margin-inline: 12px;
+  }
+  .can-message-detail > p,
+  .can-decode-note { grid-column: 1; }
   .main { padding: 18px 14px 0; }
   .topbar { gap: 8px; align-items: flex-start; }
   .heading-group { gap: 6px; }

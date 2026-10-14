@@ -1,21 +1,45 @@
 
-from can_decoder import decode_can_frame
+import unittest
+
+from can_decoder import decode_can_frame, encode_can_frame
 
 
 def make_frame(voltage, current, temperature):
-    values = [
-        round(voltage * 10),
-        round(current * 10),
-        round((temperature + 40) * 10)
-    ]
+    return encode_can_frame(
+        "ECU_Telemetry",
+        {
+            "Voltage": voltage,
+            "Current": current,
+            "Temperature": temperature,
+        },
+    )
 
-    data = bytearray()
 
-    for value in values:
-        data.extend(value.to_bytes(2, "little"))
+class DecoderTests(unittest.TestCase):
+    def test_dbc_encoder_round_trips_supported_telemetry(self):
+        frame = make_frame(400.04, 35.05, 45.06)
+        result = decode_can_frame(0x100, frame)
 
-    data.extend([0, 0])
-    return bytes(data)
+        self.assertEqual(len(frame), 8)
+        self.assertEqual(result["can_id"], "0x100")
+        self.assertEqual(result["message_name"], "ECU_Telemetry")
+        self.assertEqual(result["source_ecu"], "ECU")
+        self.assertEqual(result["dlc"], 8)
+        self.assertEqual(result["decode_status"], "decoded")
+        self.assertEqual(
+            [signal["name"] for signal in result["decoded_signals"]],
+            ["Voltage", "Current", "Temperature"],
+        )
+        self.assertAlmostEqual(result["voltage"], 400.0)
+        self.assertAlmostEqual(result["current"], 35.1)
+        self.assertAlmostEqual(result["temperature"], 45.1)
+
+    def test_unknown_can_id_returns_decoder_error_details(self):
+        result = decode_can_frame(0x999, bytes(8))
+
+        self.assertEqual(result["decode_status"], "error")
+        self.assertTrue(result["error"])
+        self.assertEqual(result["decoded_signals"], [])
 
 
 scenarios = [
