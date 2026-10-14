@@ -5,6 +5,7 @@ import csv
 from collections import defaultdict
 from pathlib import Path
 import random
+import sys
 import zipfile
 
 import joblib
@@ -13,9 +14,11 @@ from sklearn.ensemble import IsolationForest
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND_DIR))
+
 from syncan_predictor import MODEL_PATH, SIGNAL_COUNTS, feature_names, record_features
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BACKEND_DIR / "data" / "synCAN"
 TRAIN_FILES = [DATA_DIR / f"train_{index}.zip" for index in range(1, 5)]
 TEST_FILES = [

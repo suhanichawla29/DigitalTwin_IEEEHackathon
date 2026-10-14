@@ -2,6 +2,7 @@
 
 import argparse
 from pathlib import Path
+import sys
 
 import joblib
 import numpy as np
@@ -10,13 +11,15 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.model_selection import LeaveOneGroupOut
 
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND_DIR))
+
 from training.prepare_nasa_data import (
     FEATURE_NAMES,
     RATED_CAPACITY_AH,
     load_battery_runs,
 )
 
-BACKEND_DIR = Path(__file__).resolve().parents[1]
 DATA_DIR = BACKEND_DIR / "data" / "nasa"
 MODEL_PATH = BACKEND_DIR / "models" / "nasa_capacity.joblib"
 
