@@ -377,6 +377,11 @@
               '<strong>' +
                 escape(message.message_name || 'Unavailable') +
               '</strong>' +
+              '<small class="ecu-can-record-meta">' +
+                'ECU: ' + escape(message.source_ecu || 'Unavailable') +
+                ' · DLC: ' + escape(message.dlc === undefined ||
+                  message.dlc === null ? 'Unavailable' : message.dlc) +
+              '</small>' +
               '<code class="ecu-can-payload">' + escape(payload) + '</code>' +
               '<div class="ecu-can-signals">' +
                 (signals || '<span>Decoded signals: Unavailable</span>') +

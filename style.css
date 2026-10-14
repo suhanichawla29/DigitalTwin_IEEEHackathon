@@ -1311,7 +1311,7 @@ p { color: var(--muted); }
 .ecu-inspector-heading h3 {
   margin: 3px 0 0;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -1329,7 +1329,7 @@ p { color: var(--muted); }
   display: block;
   margin-top: 3px;
   color: var(--text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -1338,7 +1338,7 @@ p { color: var(--muted); }
 .ecu-component-description {
   margin: 5px 0 0;
   color: var(--muted);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.55;
 }
 
@@ -1363,7 +1363,7 @@ p { color: var(--muted); }
 .ecu-inspector-block h4 {
   margin: 0 0 8px;
   color: var(--text);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
 }
 
@@ -1384,7 +1384,7 @@ p { color: var(--muted); }
   gap: 6px;
   padding-bottom: 5px;
   border-bottom: 1px solid var(--line-soft);
-  font-size: 8px;
+  font-size: 9px;
 }
 
 .ecu-telemetry-list li:last-child {
@@ -1394,7 +1394,7 @@ p { color: var(--muted); }
 
 .ecu-telemetry-list strong {
   color: var(--text);
-  font: 600 8px ui-monospace, monospace;
+  font: 600 9px ui-monospace, monospace;
   text-align: right;
 }
 
@@ -1417,7 +1417,7 @@ p { color: var(--muted); }
 .ecu-alert-list strong,
 .ecu-can-record > strong {
   color: var(--text);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 600;
 }
 
@@ -1429,7 +1429,7 @@ p { color: var(--muted); }
 
 .ecu-alert-list p {
   margin: 5px 0 0;
-  font-size: 8px;
+  font-size: 9px;
   line-height: 1.45;
 }
 
@@ -1441,18 +1441,25 @@ p { color: var(--muted); }
 .ecu-can-record-head {
   margin-bottom: 4px;
   color: var(--faint);
-  font-size: 7px;
+  font-size: 8px;
 }
 
 .ecu-can-record-head code,
 .ecu-can-payload {
   color: var(--cyan);
-  font: 7px ui-monospace, monospace;
+  font: 8px ui-monospace, monospace;
 }
 
 .ecu-can-record > strong {
   display: block;
   overflow-wrap: anywhere;
+}
+
+.ecu-can-record-meta {
+  display: block;
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 8px;
 }
 
 .ecu-can-payload {
@@ -1466,7 +1473,7 @@ p { color: var(--muted); }
   display: grid;
   gap: 2px;
   margin-top: 5px;
-  font-size: 7px;
+  font-size: 8px;
   overflow-wrap: anywhere;
 }
 
