@@ -369,8 +369,16 @@ def get_scenarios():
 
 def _model_readiness(predictor_instance, *, dataset_status, minimum_inputs,
                      training_command, source_url):
-    model_status = predictor_instance.status()
     artifact = predictor_instance.model_path
+    is_loaded = (
+        predictor_instance.model is not None
+        if isinstance(predictor_instance, BatteryCapacityPredictor)
+        else bool(predictor_instance.models)
+    )
+    if not is_loaded and artifact.is_file():
+        predictor_instance.reload()
+
+    model_status = predictor_instance.status()
     load_error = model_status["load_error"]
     is_loaded = (
         predictor_instance.model is not None
@@ -483,6 +491,8 @@ def get_models():
 def estimate_battery_capacity(payload: dict):
     """Estimate capacity from a NASA MATLAB discharge cycle's data fields."""
     if battery_capacity_predictor.model is None:
+        battery_capacity_predictor.reload()
+    if battery_capacity_predictor.model is None:
         raise HTTPException(
             status_code=503,
             detail=battery_capacity_predictor.status()["load_error"]
@@ -509,6 +519,8 @@ def estimate_battery_capacity(payload: dict):
 @app.post("/api/can/anomaly")
 def detect_syncan_anomaly(record: dict):
     """Score one official SynCAN-format row, not a project DBC frame."""
+    if not syncan_predictor.models:
+        syncan_predictor.reload()
     if not syncan_predictor.models:
         raise HTTPException(
             status_code=503,

@@ -99,6 +99,12 @@ class SynCANPredictor:
         ) as error:
             self.error = f"Could not load SynCAN model: {error}"
 
+    def reload(self):
+        """Retry loading an artifact that became available after startup."""
+        with self.lock:
+            self._load()
+            return bool(self.models)
+
     def status(self):
         return {
             "model_type": "per-ID StandardScaler + IsolationForest",

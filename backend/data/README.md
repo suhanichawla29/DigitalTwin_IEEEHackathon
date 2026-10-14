@@ -53,6 +53,13 @@ normal (`Label=0`) rows train each per-ID StandardScaler/IsolationForest.
 Evaluation uses the six official labelled test archives. SynCAN IDs/signals
 are not mapped onto this project's DBC identifiers/signals.
 
+The official archives were inspected during preparation. Test archives use
+the named `SignalN_of_ID` columns; training shards are not perfectly uniform:
+one shard has a header with shorter `SignalN` names, and others are
+headerless positional CSVs ordered `Label,Time,ID,Signal1,Signal2,Signal3,Signal4`.
+The project loader accepts these variants and maps fields by each documented
+ID's signal count.
+
 The dataset is for non-commercial research, teaching, publication, or
 personal simulation, not field use. Read the repository's
 [license terms](https://github.com/etas/SynCAN/blob/master/License%20terms.txt)

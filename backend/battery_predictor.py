@@ -52,6 +52,12 @@ class BatteryCapacityPredictor:
         ) as error:
             self.error = f"Could not load NASA model: {error}"
 
+    def reload(self):
+        """Retry loading an artifact that became available after startup."""
+        with self.lock:
+            self._load()
+            return self.model is not None
+
     def status(self):
         return {
             "model_type": "RandomForestRegressor",

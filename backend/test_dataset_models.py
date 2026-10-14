@@ -50,22 +50,33 @@ def _write_nasa_run(path, battery_offset):
     savemat(path, {path.stem: {"cycle": cycles}})
 
 
-def _write_syncan_zip(path, rows_per_id=105, test=False):
+def _write_syncan_zip(
+    path,
+    rows_per_id=105,
+    test=False,
+    header_style="full",
+    include_header=True,
+):
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as archive:
         for can_id, signal_count in SIGNAL_COUNTS.items():
             columns = [
                 "Label",
-                "ID",
                 "Time",
+                "ID",
                 *[
-                    f"Signal{index}_of_ID"
+                    (
+                        f"Signal{index}_of_ID"
+                        if header_style == "full"
+                        else f"Signal{index}"
+                    )
                     for index in range(1, signal_count + 1)
                 ],
             ]
             from io import StringIO
             output = StringIO()
             writer = csv.DictWriter(output, fieldnames=columns)
-            writer.writeheader()
+            if include_header:
+                writer.writeheader()
             for index in range(rows_per_id):
                 row = {
                     "Label": int(test and index == rows_per_id - 1),
@@ -73,13 +84,26 @@ def _write_syncan_zip(path, rows_per_id=105, test=False):
                     "Time": index * 10,
                 }
                 for signal_index in range(1, signal_count + 1):
-                    row[f"Signal{signal_index}_of_ID"] = (
+                    column = (
+                        f"Signal{signal_index}_of_ID"
+                        if header_style == "full"
+                        else f"Signal{signal_index}"
+                    )
+                    row[column] = (
                         signal_index * 0.5 + index * 0.001
                     )
                 if test and index == rows_per_id - 1:
-                    row["Signal1_of_ID"] += 20
+                    column = (
+                        "Signal1_of_ID"
+                        if header_style == "full"
+                        else "Signal1"
+                    )
+                    row[column] += 20
                 writer.writerow(row)
-            archive.writestr(f"{can_id}.csv", output.getvalue())
+            content = output.getvalue()
+            if not include_header:
+                content = content.split("\n", 1)[1]
+            archive.writestr(f"{can_id}.csv", content)
 
 
 class DatasetModelTests(unittest.TestCase):
@@ -149,9 +173,15 @@ class DatasetModelTests(unittest.TestCase):
             root = Path(temp)
             training_zip = root / "train_1.zip"
             test_zip = root / "test_normal.zip"
-            _write_syncan_zip(training_zip)
+            _write_syncan_zip(
+                training_zip,
+                header_style="short",
+                include_header=False,
+            )
             _write_syncan_zip(test_zip, rows_per_id=4, test=True)
             artifact = root / "synCAN_isolation_forest.joblib"
+            predictor = SynCANPredictor(artifact)
+            self.assertFalse(predictor.models)
             metadata = train_syncan(
                 [training_zip],
                 [test_zip],
@@ -160,7 +190,7 @@ class DatasetModelTests(unittest.TestCase):
             )
             self.assertTrue(artifact.is_file())
             self.assertEqual(set(metadata["training_rows_fitted_by_id"]), set(SIGNAL_COUNTS))
-            predictor = SynCANPredictor(artifact)
+            self.assertTrue(predictor.reload())
             self.assertIsNone(predictor.error)
             self.assertEqual(len(predictor.models), len(SIGNAL_COUNTS))
             result = predictor.score({

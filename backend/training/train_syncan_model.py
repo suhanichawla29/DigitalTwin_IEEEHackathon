@@ -3,6 +3,7 @@
 import argparse
 import csv
 from collections import defaultdict
+from itertools import chain
 from pathlib import Path
 import random
 import sys
@@ -33,6 +34,64 @@ TEST_FILES = [
     )
 ]
 REQUIRED_COLUMNS = {"Label", "ID", "Time"}
+POSITIONAL_COLUMNS = [
+    "Label",
+    "Time",
+    "ID",
+    "Signal1",
+    "Signal2",
+    "Signal3",
+    "Signal4",
+]
+
+
+def _named_rows(stream, source_name):
+    reader = csv.reader(stream)
+    first = next(reader, None)
+    if first is None:
+        return
+
+    normalized_header = {
+        value.strip().lstrip("\ufeff")
+        for value in first
+    }
+    if REQUIRED_COLUMNS.issubset(normalized_header):
+        fieldnames = [
+            value.strip().lstrip("\ufeff")
+            for value in first
+        ]
+        for values in reader:
+            if len(values) != len(fieldnames):
+                continue
+            yield dict(zip(fieldnames, values))
+        return
+
+    # SynCAN's training shards include headerless CSVs; an early shard has
+    # a header using Signal1..Signal4 rather than the test files' full names.
+    for values in chain((first,), reader):
+        if len(values) < 3 or len(values) > len(POSITIONAL_COLUMNS):
+            continue
+        if values[2].strip().casefold() not in SIGNAL_COUNTS:
+            if values[0].strip().casefold() == "label":
+                raise ValueError(
+                    f"{source_name}: unrecognized CSV header {values}"
+                )
+            continue
+        yield dict(zip(POSITIONAL_COLUMNS, values))
+
+
+def _normalize_signals(row):
+    normalized = dict(row)
+    for can_id, count in SIGNAL_COUNTS.items():
+        if str(normalized.get("ID", "")).strip().casefold() != can_id:
+            continue
+        for index in range(1, count + 1):
+            target = f"Signal{index}_of_ID"
+            short_name = f"Signal{index}"
+            if target not in normalized and short_name in normalized:
+                normalized[target] = normalized[short_name]
+        break
+    return normalized
 
 
 def _csv_sources(path):
@@ -66,21 +125,8 @@ def iter_rows(paths):
         for source_name, stream in _csv_sources(path):
             previous = {}
             try:
-                reader = csv.DictReader(stream)
-                columns = {
-                    name.strip().lstrip("\ufeff")
-                    for name in (reader.fieldnames or [])
-                }
-                if not REQUIRED_COLUMNS.issubset(columns):
-                    raise ValueError(
-                        f"{source_name}: expected Label, ID, Time, and signal columns"
-                    )
-                for raw in reader:
-                    row = {
-                        str(key).strip().lstrip("\ufeff"): value
-                        for key, value in raw.items()
-                        if key is not None
-                    }
+                for raw in _named_rows(stream, source_name):
+                    row = _normalize_signals(raw)
                     can_id = row.get("ID", "").strip().casefold()
                     if can_id not in SIGNAL_COUNTS:
                         continue
