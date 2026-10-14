@@ -415,6 +415,7 @@ def get_dataset_model_status():
     nasa_expected = ["B0005.mat", "B0006.mat", "B0007.mat", "B0018.mat"]
     nasa_files = sorted(path.name for path in NASA_DATA_DIR.glob("*.mat"))
     nasa_dataset = {
+        "status": "present" if len(nasa_files) >= 2 else "missing",
         "directory": str(
             NASA_DATA_DIR.relative_to(Path(__file__).resolve().parent.parent)
         ),
@@ -432,6 +433,11 @@ def get_dataset_model_status():
         path.name for path in syncan_expected_paths if path.is_file()
     ]
     syncan_dataset = {
+        "status": (
+            "present"
+            if len(syncan_files) == len(syncan_expected_paths)
+            else "missing"
+        ),
         "directory": str(
             SYNCAN_DATA_DIR.relative_to(Path(__file__).resolve().parent.parent)
         ),
@@ -448,14 +454,20 @@ def get_dataset_model_status():
             battery_capacity_predictor,
             dataset_status=nasa_dataset,
             minimum_inputs=2,
-            training_command="python backend\\training\\train_nasa_model.py",
+            training_command=(
+                ".\\.venv\\Scripts\\python.exe "
+                "backend\\training\\train_nasa_model.py"
+            ),
             source_url="https://data.nasa.gov/dataset/li-ion-battery-aging-datasets",
         ),
         "syncan_intrusion_detection": _model_readiness(
             syncan_predictor,
             dataset_status=syncan_dataset,
             minimum_inputs=len(syncan_expected_paths),
-            training_command="python backend\\training\\train_syncan_model.py",
+            training_command=(
+                ".\\.venv\\Scripts\\python.exe "
+                "backend\\training\\train_syncan_model.py"
+            ),
             source_url="https://github.com/etas/SynCAN",
         ),
     }

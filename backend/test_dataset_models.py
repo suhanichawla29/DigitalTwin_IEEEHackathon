@@ -8,6 +8,7 @@ import numpy as np
 from scipy.io import savemat
 
 from battery_predictor import BatteryCapacityPredictor
+from main import get_dataset_model_status
 from syncan_predictor import SIGNAL_COUNTS, SynCANPredictor, record_features
 from training.prepare_nasa_data import (
     FEATURE_NAMES,
@@ -179,6 +180,29 @@ class DatasetModelTests(unittest.TestCase):
             self.assertFalse(syncan.models)
             self.assertIsNone(nasa.error)
             self.assertIsNone(syncan.error)
+
+    def test_backend_reports_separate_dataset_readiness(self):
+        statuses = get_dataset_model_status()
+        self.assertEqual(
+            set(statuses),
+            {"nasa_battery_capacity", "syncan_intrusion_detection"},
+        )
+        for model in statuses.values():
+            self.assertIn(
+                model["status"],
+                {"ready", "missing_dataset", "not_trained", "load_error"},
+            )
+            self.assertTrue(model["artifact_path"].endswith(".joblib"))
+            self.assertIn("backend\\data\\", model["dataset"]["directory"])
+            self.assertTrue(model["training_command"].startswith(".\\.venv\\Scripts\\python.exe"))
+        self.assertIn(
+            "capacity",
+            statuses["nasa_battery_capacity"]["purpose"].casefold(),
+        )
+        self.assertIn(
+            "intrusion detection",
+            statuses["syncan_intrusion_detection"]["purpose"].casefold(),
+        )
 
 
 if __name__ == "__main__":

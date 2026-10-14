@@ -64,9 +64,23 @@ System for High Dimensional CAN Bus Data,” IEEE Access, 2020.
 From the project root in PowerShell, after downloading and placing the files:
 
 ```powershell
+New-Item -ItemType Directory -Force backend\data\nasa, backend\data\synCAN | Out-Null
 .\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 .\.venv\Scripts\python.exe backend\training\train_nasa_model.py
 .\.venv\Scripts\python.exe backend\training\train_syncan_model.py
+```
+
+For NASA, download the original `B0005.mat`, `B0006.mat`, `B0007.mat`, and
+`B0018.mat` files from the official NASA Ames PCoE channel, then copy them into
+`backend\data\nasa`. The catalog page may not expose direct file links; do not
+use an unverified mirror.
+
+For SynCAN, clone the official repository and copy its archives into the
+project data folder:
+
+```powershell
+git clone https://github.com/etas/SynCAN.git "$env:TEMP\SynCAN"
+Copy-Item "$env:TEMP\SynCAN\train_1.zip", "$env:TEMP\SynCAN\train_2.zip", "$env:TEMP\SynCAN\train_3.zip", "$env:TEMP\SynCAN\train_4.zip", "$env:TEMP\SynCAN\test_normal.zip", "$env:TEMP\SynCAN\test_plateau.zip", "$env:TEMP\SynCAN\test_continuous.zip", "$env:TEMP\SynCAN\test_playback.zip", "$env:TEMP\SynCAN\test_suppress.zip", "$env:TEMP\SynCAN\test_flooding.zip" -Destination backend\data\synCAN
 ```
 
 The scripts write and reload-verify:
