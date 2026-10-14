@@ -59,15 +59,20 @@ training. `GET /api/models` reports each model's dataset presence, artifact
 load status, and metadata. Dataset-specific inference endpoints are
 `POST /api/battery/capacity` and `POST /api/can/anomaly`.
 
-## Simulated CAN dashboard monitor
+## Simulated CAN message history
 
-The home dashboard's ECU Encoder & CAN Message Monitor uses the current
-FastAPI simulation sample, encodes the DBC-defined `ECU_Telemetry` message
-(CAN ID `0x100`, sender `ECU`, DLC 8) with cantools, and decodes the same bytes
-before diagnostics consume the readings. The dashboard monitor and its CAN
-Message History are views of the same backend-bounded 100-frame history.
+The home dashboard shows one CAN Message History table backed by the current
+FastAPI simulation sample. The backend encodes the DBC-defined
+`ECU_Telemetry` message (CAN ID `0x100`, sender `ECU`, DLC 8) with cantools,
+then decodes the same bytes before diagnostics consume the readings.
 `GET /api/can/messages` supports CAN ID and message-name filters, and
 `DELETE /api/can/messages` clears the history. All traffic is simulated; no
-physical CAN adapter is connected. The project DBC frame is not mapped to
-SynCAN's separate IDs/signals, so those frames are correctly shown as not
-evaluated by the SynCAN detector.
+physical CAN adapter is connected.
+
+The SynCAN artifact accepts dataset-specific IDs (`id1` through `id10`),
+`Time` in milliseconds, and their `SignalN_of_ID` fields. The project DBC
+frame exposes only `Voltage`, `Current`, and `Temperature` at ID `0x100`; no
+validated mapping exists, so live frames show “Not evaluated — incompatible
+features” rather than a fabricated normal/anomaly result. The
+`POST /api/can/anomaly` endpoint accepts compatible SynCAN-format records and
+returns an IsolationForest anomaly flag and decision score, not a probability.

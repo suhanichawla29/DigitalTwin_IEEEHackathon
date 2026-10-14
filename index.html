@@ -803,14 +803,14 @@
       </div>
 
       <section
-        class="panel can-monitor-panel"
-        id="can-monitor-panel"
-        aria-label="ECU encoder and CAN message monitor"
+        class="panel can-history-panel"
+        id="can-history-panel"
+        aria-label="Simulated CAN message history"
       >
-        <div class="panel-header can-monitor-header">
+        <div class="panel-header can-history-panel-header">
           <div>
-            <h2>ECU Encoder &amp; CAN Message Monitor</h2>
-            <p>DBC-encoded frames from the current simulated telemetry sample</p>
+            <h2>CAN Message History</h2>
+            <p>Recent DBC-decoded frames from the simulated vehicle feed</p>
           </div>
           <span class="can-simulated-badge">
             <span class="status-dot"></span>
@@ -818,7 +818,7 @@
           </span>
         </div>
 
-        <div class="can-monitor-toolbar">
+        <div class="can-history-toolbar">
           <label class="can-filter">
             <span class="sr-only">Filter CAN ID, message, ECU, or payload</span>
             <i data-lucide="search" aria-hidden="true"></i>
@@ -829,7 +829,7 @@
               autocomplete="off"
             >
           </label>
-          <span id="can-monitor-count" class="can-monitor-count" aria-live="polite">
+          <span id="can-history-live-count" class="can-history-live-count" aria-live="polite">
             Waiting for simulated frames
           </span>
           <button
@@ -837,7 +837,7 @@
             class="text-button can-control"
             id="can-history-toggle"
             aria-pressed="false"
-          >Pause monitor</button>
+          >Pause history</button>
           <button
             type="button"
             class="text-button can-control"
@@ -845,58 +845,32 @@
           >Clear history</button>
         </div>
 
-        <div class="can-subsection">
-          <h3>ECU Encoder &amp; CAN Message Monitor</h3>
-          <div class="table-scroll can-table-scroll">
-            <table class="can-table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>CAN ID</th>
-                  <th>Message</th>
-                  <th>Source ECU</th>
-                  <th>DLC</th>
-                  <th>Raw payload</th>
-                  <th>Decoded signals</th>
-                  <th>SynCAN</th>
-                  <th>Decoder</th>
-                </tr>
-              </thead>
-              <tbody id="can-monitor-table">
-                <tr><td colspan="9" class="empty">Waiting for simulated CAN frames.</td></tr>
-              </tbody>
-            </table>
+        <div class="can-history-heading">
+          <div>
+            <h3>Recent CAN frames</h3>
+            <p id="can-history-count">Recent frames from the bounded simulated history.</p>
           </div>
+          <span class="subtle-badge">LATEST 100</span>
         </div>
-
-        <div class="can-subsection can-history-subsection">
-          <div class="can-history-heading">
-            <div>
-              <h3>CAN Message History</h3>
-              <p id="can-history-count">Recent frames from the same bounded monitor history.</p>
-            </div>
-            <span class="subtle-badge">LATEST 100</span>
-          </div>
-          <div class="table-scroll can-table-scroll">
-            <table class="can-table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>CAN ID</th>
-                  <th>Message</th>
-                  <th>Source ECU</th>
-                  <th>DLC</th>
-                  <th>Raw payload</th>
-                  <th>Decoded signals</th>
-                  <th>SynCAN</th>
-                  <th>Decoder</th>
-                </tr>
-              </thead>
-              <tbody id="can-history-table">
-                <tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>
-              </tbody>
-            </table>
-          </div>
+        <div class="table-scroll can-table-scroll">
+          <table class="can-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>CAN ID</th>
+                <th>Message</th>
+                <th>Source ECU</th>
+                <th>DLC</th>
+                <th>Raw payload</th>
+                <th>Decoded signals</th>
+                <th>SynCAN</th>
+                <th>Decoder</th>
+              </tr>
+            </thead>
+            <tbody id="can-history-table">
+              <tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>
+            </tbody>
+          </table>
         </div>
 
         <section

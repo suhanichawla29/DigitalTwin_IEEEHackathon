@@ -700,14 +700,14 @@ p { color: var(--muted); }
   gap: 18px;
 }
 
-.can-monitor-panel {
+.can-history-panel {
   margin-top: 18px;
   padding-bottom: 14px;
 }
 
-.can-monitor-header { align-items: flex-start; }
+.can-history-panel-header { align-items: flex-start; }
 
-.can-monitor-header p,
+.can-history-panel-header p,
 .can-history-heading p {
   margin: 5px 0 0;
   color: var(--muted);
@@ -735,7 +735,7 @@ p { color: var(--muted); }
   background: var(--cyan);
 }
 
-.can-monitor-toolbar {
+.can-history-toolbar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -772,7 +772,7 @@ p { color: var(--muted); }
 
 .can-filter input::placeholder { color: var(--faint); }
 
-.can-monitor-count {
+.can-history-live-count {
   margin-right: auto;
   color: var(--muted);
   font-size: 9px;
@@ -785,9 +785,6 @@ p { color: var(--muted); }
   font-size: 9px;
 }
 
-.can-subsection { margin-top: 15px; }
-
-.can-subsection > h3,
 .can-history-heading {
   margin: 0 20px 8px;
   color: var(--text);
@@ -2464,15 +2461,14 @@ td.empty { padding: 40px; text-align: center; }
   .ecu-inspector-grid { grid-template-columns: minmax(0, 1fr); }
   .ecu-inspector-block { padding: 10px; }
   .ecu-can-list { max-height: 220px; }
-  .can-monitor-panel { margin-top: 14px; }
-  .can-monitor-header { gap: 8px; }
-  .can-monitor-header p { font-size: 8px; }
+  .can-history-panel { margin-top: 14px; }
+  .can-history-panel-header { gap: 8px; }
+  .can-history-panel-header p { font-size: 8px; }
   .can-simulated-badge { padding: 5px 7px; font-size: 7px; }
-  .can-monitor-toolbar { margin-inline: 12px; gap: 7px; }
+  .can-history-toolbar { margin-inline: 12px; gap: 7px; }
   .can-filter { min-width: 100%; max-width: none; }
-  .can-monitor-count { width: 100%; }
+  .can-history-live-count { width: 100%; }
   .can-control { font-size: 8px; }
-  .can-subsection > h3,
   .can-history-heading { margin-inline: 12px; }
   .can-table-scroll { margin-inline: 12px; }
   .can-message-detail {

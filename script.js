@@ -292,6 +292,15 @@ const source = new EV.ApiSource();
         ? 'Decoded'
         : 'Error: ' + (message.error || 'unavailable');
       const canTime = Number(message.timestamp) * 1000;
+      const synCANState = message.synCAN_status === 'evaluated'
+        ? message.synCAN_anomaly ? 'Anomaly detected' : 'Normal'
+        : message.synCAN_status === 'warming_up'
+          ? 'Warming up'
+          : message.synCAN_status === 'incompatible_features'
+            ? 'Not evaluated — incompatible features'
+            : message.synCAN_status === 'model_unavailable'
+              ? 'Model unavailable'
+              : 'Not evaluated';
 
       return `
         <tr
@@ -309,18 +318,14 @@ const source = new EV.ApiSource();
           <td>${escape(message.dlc)}</td>
           <td><code>${escape(message.payload_hex || 'Unavailable')}</code></td>
           <td>${signals || 'Unavailable'}</td>
-          <td>${escape(message.synCAN_status === 'evaluated'
-            ? message.synCAN_anomaly ? 'Anomaly' : 'Normal'
-            : 'Not evaluated')}</td>
+          <td>${escape(synCANState)}</td>
           <td>${escape(decodeState)}</td>
         </tr>
       `;
     };
 
-    $('can-monitor-count').textContent =
+    $('can-history-live-count').textContent =
       matching.length + ' / ' + messages.length + ' recent frames';
-    $('can-monitor-table').innerHTML = newest.slice(0, 5).map(rowMarkup).join('')
-      || '<tr><td colspan="9" class="empty">No CAN frames match this filter yet.</td></tr>';
     $('can-history-table').innerHTML = newest.slice(0, 25).map(rowMarkup).join('')
       || '<tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>';
     $('can-history-count').textContent =
@@ -340,6 +345,16 @@ const source = new EV.ApiSource();
           : signal.value)}${signal.unit ? ' ' + escape(signal.unit) : ''}</strong>
       </div>
     `).join('') || '<p>No decoded signals are available for this frame.</p>';
+    const synCANDetail = selected.synCAN_status === 'evaluated'
+      ? selected.synCAN_anomaly ? 'Anomaly detected' : 'Normal'
+      : selected.synCAN_status === 'warming_up'
+        ? 'Warming up'
+        : selected.synCAN_status === 'incompatible_features'
+          ? selected.synCAN_note ||
+            'Not evaluated: this frame does not match the SynCAN feature schema.'
+          : selected.synCAN_status === 'model_unavailable'
+            ? selected.synCAN_note || 'SynCAN model unavailable.'
+            : 'Not evaluated.';
 
     $('can-message-detail').innerHTML = `
       <div class="can-detail-payload">
@@ -354,9 +369,7 @@ const source = new EV.ApiSource();
         ${escape(selected.decode_status === 'decoded'
           ? 'DBC decoder: decoded'
           : 'DBC decoder error: ' + (selected.error || 'unknown error'))}
-        · SynCAN: ${escape(selected.synCAN_status === 'evaluated'
-          ? (selected.synCAN_anomaly ? 'anomaly' : 'normal')
-          : 'not evaluated; no verified mapping from this DBC frame')}
+        · SynCAN: ${escape(synCANDetail)}
       </p>
     `;
   }
@@ -1203,8 +1216,8 @@ const source = new EV.ApiSource();
   listen($('can-history-toggle'), 'click', () => {
     canHistoryPaused = !canHistoryPaused;
     $('can-history-toggle').textContent = canHistoryPaused
-      ? 'Resume monitor'
-      : 'Pause monitor';
+      ? 'Resume history'
+      : 'Pause history';
     $('can-history-toggle').setAttribute(
       'aria-pressed',
       String(canHistoryPaused)
@@ -1229,16 +1242,14 @@ const source = new EV.ApiSource();
     }
   });
 
-  ['can-monitor-table', 'can-history-table'].forEach(id => {
-    listen($(id), 'click', selectCanMessage);
-    listen($(id), 'keydown', event => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      const row = event.target.closest('tr[data-can-key]');
-      if (!row) return;
-      event.preventDefault();
-      selectedCanMessage = row.dataset.canKey;
-      renderCanHistory();
-    });
+  listen($('can-history-table'), 'click', selectCanMessage);
+  listen($('can-history-table'), 'keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest('tr[data-can-key]');
+    if (!row) return;
+    event.preventDefault();
+    selectedCanMessage = row.dataset.canKey;
+    renderCanHistory();
   });
 
   // Fault scenario selector.

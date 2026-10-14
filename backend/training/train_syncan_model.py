@@ -202,6 +202,12 @@ def _metrics(counts):
         "precision": float(precision),
         "recall": float(recall),
         "f1": float(f1),
+        "confusion_matrix": {
+            "label_0_normal_predicted_normal": int(true_negatives),
+            "label_0_normal_predicted_intrusion": int(false_positives),
+            "label_1_intrusion_predicted_normal": int(missed_intrusions),
+            "label_1_intrusion_predicted_intrusion": int(true_positives),
+        },
         "false_positives": int(false_positives),
         "missed_intrusions": int(missed_intrusions),
     }
@@ -260,6 +266,30 @@ def _evaluate(models, paths):
             for key, value in source_counts[label].items():
                 aggregate["all"][label][key] += value
     return _metrics(aggregate["all"]), by_file
+
+
+def evaluate_saved_model(model_path=MODEL_PATH, test_files=TEST_FILES):
+    """Evaluate a validated saved artifact without retraining or modifying it."""
+    from syncan_predictor import SynCANPredictor
+
+    predictor = SynCANPredictor(model_path)
+    if not predictor.models:
+        raise RuntimeError(
+            predictor.error or f"SynCAN model artifact is missing: {model_path}"
+        )
+
+    evaluation, by_file = _evaluate(predictor.models, test_files)
+    return {
+        "source": predictor.metadata["source"],
+        "label_meaning": {
+            "0": "normal",
+            "1": "intrusion",
+            "model_prediction_-1": "anomaly",
+            "model_prediction_1": "normal",
+        },
+        "evaluation": evaluation,
+        "evaluation_by_test_file": by_file,
+    }
 
 
 def train(
@@ -330,7 +360,20 @@ def main():
     parser.add_argument("--output", type=Path, default=MODEL_PATH)
     parser.add_argument("--max-samples-per-id", type=int, default=30000)
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument(
+        "--evaluate-only",
+        action="store_true",
+        help="Evaluate the saved artifact on official test archives without training",
+    )
     args = parser.parse_args()
+    if args.evaluate_only:
+        result = evaluate_saved_model(args.output)
+        print(f"Evaluated saved model: {args.output}")
+        print(f"Source: {result['source']}")
+        print(f"Label meaning: {result['label_meaning']}")
+        print(f"Evaluation: {result['evaluation']}")
+        print(f"Per test file: {result['evaluation_by_test_file']}")
+        return
     if args.max_samples_per_id < 100:
         parser.error("--max-samples-per-id must be at least 100")
     metadata = train(

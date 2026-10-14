@@ -9,14 +9,22 @@ from scipy.io import savemat
 
 from battery_predictor import BatteryCapacityPredictor
 from main import _model_readiness, get_dataset_model_status
-from syncan_predictor import SIGNAL_COUNTS, SynCANPredictor, record_features
+from syncan_predictor import (
+    SIGNAL_COUNTS,
+    SynCANPredictor,
+    feature_names,
+    record_features,
+)
 from training.prepare_nasa_data import (
     FEATURE_NAMES,
     discharge_features,
     load_battery_runs,
 )
 from training.train_nasa_model import train as train_nasa
-from training.train_syncan_model import train as train_syncan
+from training.train_syncan_model import (
+    evaluate_saved_model,
+    train as train_syncan,
+)
 
 
 def _write_nasa_run(path, battery_offset):
@@ -161,10 +169,24 @@ class DatasetModelTests(unittest.TestCase):
         }
         can_id, _, previous = record_features(record)
         self.assertEqual(can_id, "id2")
+        self.assertEqual(
+            feature_names(can_id),
+            [
+                "delta_time_ms",
+                "Signal1_of_ID",
+                "Signal2_of_ID",
+                "Signal3_of_ID",
+                "Signal1_delta",
+                "Signal2_delta",
+                "Signal3_delta",
+            ],
+        )
         next_record = {**record, "Time": 1120, "Signal1_of_ID": 1.5}
         _, vector, _ = record_features(next_record, previous)
-        self.assertEqual(vector[0, 0], 120)
-        self.assertEqual(vector[0, 4], 0.5)
+        np.testing.assert_array_equal(
+            vector[0],
+            [120, 1.5, 2.0, 3.0, 0.5, 0.0, 0.0],
+        )
         with self.assertRaises(ValueError):
             record_features({**record, "ID": "0x100"})
 
@@ -203,6 +225,15 @@ class DatasetModelTests(unittest.TestCase):
             self.assertEqual(status["status"], "ready")
             self.assertIsNone(predictor.error)
             self.assertEqual(len(predictor.models), len(SIGNAL_COUNTS))
+            for can_id, model in predictor.models.items():
+                self.assertEqual(
+                    list(model.named_steps),
+                    ["standardscaler", "isolationforest"],
+                )
+                self.assertEqual(
+                    model.n_features_in_,
+                    len(feature_names(can_id)),
+                )
             result = predictor.score({
                 "ID": "id1",
                 "Time": 1000,
@@ -211,6 +242,37 @@ class DatasetModelTests(unittest.TestCase):
             })
             self.assertIn("is_anomaly", result)
             self.assertNotIn("failure_probability", result)
+            self.assertTrue(np.isfinite(result["decision_score"]))
+
+            evaluation = evaluate_saved_model(artifact, [test_zip])
+            self.assertEqual(evaluation["source"], "ETAS SynCAN dataset")
+            self.assertEqual(
+                evaluation["label_meaning"],
+                {
+                    "0": "normal",
+                    "1": "intrusion",
+                    "model_prediction_-1": "anomaly",
+                    "model_prediction_1": "normal",
+                },
+            )
+            metrics = evaluation["evaluation"]
+            self.assertEqual(metrics["rows_evaluated"], 40)
+            self.assertEqual(
+                sum(metrics["confusion_matrix"].values()),
+                metrics["rows_evaluated"],
+            )
+            self.assertEqual(
+                metrics["false_positives"],
+                metrics["confusion_matrix"][
+                    "label_0_normal_predicted_intrusion"
+                ],
+            )
+            self.assertEqual(
+                metrics["missed_intrusions"],
+                metrics["confusion_matrix"][
+                    "label_1_intrusion_predicted_normal"
+                ],
+            )
 
     def test_untrained_predictors_do_not_claim_ready(self):
         with tempfile.TemporaryDirectory() as temp:

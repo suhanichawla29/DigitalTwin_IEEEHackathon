@@ -337,6 +337,7 @@ def get_readings(
                 + readings.get("error", "unknown decoder error")
             )
         sample_timestamp = time.time()
+        syncan_available = bool(syncan_predictor.models)
         can_message = {
             "timestamp": sample_timestamp,
             **{
@@ -353,9 +354,19 @@ def get_readings(
                 )
             },
             "source": "SIMULATED_CAN",
-            "synCAN_status": "not_evaluated",
+            "synCAN_status": (
+                "incompatible_features"
+                if syncan_available
+                else "model_unavailable"
+            ),
             "synCAN_note": (
-                "Project DBC frame has no verified mapping to SynCAN IDs/signals."
+                "Not evaluated: project DBC frame 0x100 provides Voltage, "
+                "Current, and Temperature, while SynCAN models require IDs "
+                "id1-id10 and ID-specific SignalN_of_ID values with Time (ms). "
+                "No validated mapping exists."
+                if syncan_available
+                else syncan_predictor.error
+                or "SynCAN model is not trained or could not be loaded."
             ),
         }
         _can_messages.append(can_message)

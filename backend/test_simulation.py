@@ -9,6 +9,7 @@ from main import (
     get_readings,
     make_demo_frame,
     reset_simulation,
+    syncan_predictor,
 )
 from can_decoder import decode_can_frame
 
@@ -173,10 +174,20 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(result["can_message"]["source_ecu"], "ECU")
         self.assertEqual(result["can_message"]["dlc"], 8)
         self.assertEqual(result["can_message"]["decode_status"], "decoded")
+        expected_syncan_status = (
+            "incompatible_features"
+            if syncan_predictor.models
+            else "model_unavailable"
+        )
         self.assertEqual(
             result["can_message"]["synCAN_status"],
-            "not_evaluated",
+            expected_syncan_status,
         )
+        self.assertIn(
+            "SynCAN",
+            result["can_message"]["synCAN_note"],
+        )
+        self.assertNotEqual(result["can_message"]["synCAN_status"], "evaluated")
         self.assertAlmostEqual(result["voltage"], result["can_message"]["decoded_signals"][0]["value"])
         self.assertAlmostEqual(result["current"], result["can_message"]["decoded_signals"][1]["value"])
         self.assertAlmostEqual(result["temperature"], result["can_message"]["decoded_signals"][2]["value"])

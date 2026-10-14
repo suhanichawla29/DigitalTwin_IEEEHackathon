@@ -81,9 +81,22 @@ class SynCANPredictor:
             expected_ids = set(SIGNAL_COUNTS)
             if set(models) != expected_ids:
                 raise ValueError("SynCAN model artifact is missing one or more IDs")
+            if metadata["source"] != "ETAS SynCAN dataset":
+                raise ValueError("SynCAN model artifact has an unknown data source")
+            if metadata["training_labels_used"] != "Label=0 rows only":
+                raise ValueError("SynCAN model was not fitted on normal-only rows")
             for can_id in expected_ids:
                 if metadata["feature_names_by_id"][can_id] != feature_names(can_id):
                     raise ValueError(f"SynCAN feature schema mismatch for {can_id}")
+                model = models[can_id]
+                steps = getattr(model, "named_steps", {})
+                if (
+                    list(steps) != ["standardscaler", "isolationforest"] or
+                    model.n_features_in_ != len(feature_names(can_id))
+                ):
+                    raise ValueError(
+                        f"SynCAN preprocessing/model schema mismatch for {can_id}"
+                    )
             self.models = models
             self.metadata = metadata
             self.error = None
