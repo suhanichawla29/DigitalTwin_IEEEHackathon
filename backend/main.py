@@ -20,6 +20,14 @@ from predictor import (
     FailurePredictor,
     HORIZON_SECONDS,
 )
+from battery_predictor import BatteryCapacityPredictor
+from syncan_predictor import SIGNAL_COUNTS, SynCANPredictor
+from training.train_nasa_model import DATA_DIR as NASA_DATA_DIR
+from training.train_syncan_model import (
+    DATA_DIR as SYNCAN_DATA_DIR,
+    TEST_FILES as SYNCAN_TEST_FILES,
+    TRAIN_FILES as SYNCAN_TRAIN_FILES,
+)
 
 app = FastAPI(title="EV Digital Twin API")
 
@@ -204,6 +212,8 @@ class SimulationState:
 _episode_lock = threading.RLock()
 simulation = SimulationState()
 predictor = FailurePredictor()
+battery_capacity_predictor = BatteryCapacityPredictor()
+syncan_predictor = SynCANPredictor()
 
 
 # --------------------------------------------------
@@ -335,6 +345,7 @@ def get_readings(
         "sample_index": _sample_count,
         "timestamp": time.time(),
         "prediction": prediction,
+        "dataset_models": get_dataset_model_status(),
     }
 
 
@@ -356,6 +367,147 @@ def get_scenarios():
     }
 
 
+def _model_readiness(predictor_instance, *, dataset_status, minimum_inputs,
+                     training_command, source_url):
+    model_status = predictor_instance.status()
+    artifact = predictor_instance.model_path
+    load_error = model_status["load_error"]
+
+    if load_error:
+        status = "load_error"
+        message = load_error
+    elif (
+        predictor_instance.model is not None
+        if isinstance(predictor_instance, BatteryCapacityPredictor)
+        else bool(predictor_instance.models)
+    ):
+        status = "ready"
+        message = "Model artifact loaded and verified."
+    elif dataset_status["available_count"] < minimum_inputs:
+        status = "missing_dataset"
+        message = (
+            f"Dataset files are missing. Place the required files in "
+            f"{dataset_status['directory']} before training."
+        )
+    elif not artifact.is_file():
+        status = "not_trained"
+        message = (
+            "Dataset files are present, but no trained model artifact exists. "
+            f"Train using: {training_command}"
+        )
+    else:
+        status = "load_error"
+        message = f"Model artifact exists but did not load: {artifact}"
+
+    return {
+        **model_status,
+        "status": status,
+        "error": message if status != "ready" else None,
+        "dataset": dataset_status,
+        "training_command": training_command,
+        "download_url": source_url,
+        "artifact_exists": artifact.is_file(),
+    }
+
+
+def get_dataset_model_status():
+    nasa_expected = ["B0005.mat", "B0006.mat", "B0007.mat", "B0018.mat"]
+    nasa_files = sorted(path.name for path in NASA_DATA_DIR.glob("*.mat"))
+    nasa_dataset = {
+        "directory": str(
+            NASA_DATA_DIR.relative_to(Path(__file__).resolve().parent.parent)
+        ),
+        "expected_files": nasa_expected,
+        "files_found": nasa_files,
+        "missing_files": [
+            filename for filename in nasa_expected
+            if not (NASA_DATA_DIR / filename).is_file()
+        ],
+        "available_count": len(nasa_files),
+        "minimum_files": 2,
+    }
+    syncan_expected_paths = SYNCAN_TRAIN_FILES + SYNCAN_TEST_FILES
+    syncan_files = [
+        path.name for path in syncan_expected_paths if path.is_file()
+    ]
+    syncan_dataset = {
+        "directory": str(
+            SYNCAN_DATA_DIR.relative_to(Path(__file__).resolve().parent.parent)
+        ),
+        "expected_files": [path.name for path in syncan_expected_paths],
+        "files_found": syncan_files,
+        "missing_files": [
+            path.name for path in syncan_expected_paths if not path.is_file()
+        ],
+        "available_count": len(syncan_files),
+        "minimum_files": len(syncan_expected_paths),
+    }
+    return {
+        "nasa_battery_capacity": _model_readiness(
+            battery_capacity_predictor,
+            dataset_status=nasa_dataset,
+            minimum_inputs=2,
+            training_command="python backend\\training\\train_nasa_model.py",
+            source_url="https://data.nasa.gov/dataset/li-ion-battery-aging-datasets",
+        ),
+        "syncan_intrusion_detection": _model_readiness(
+            syncan_predictor,
+            dataset_status=syncan_dataset,
+            minimum_inputs=len(syncan_expected_paths),
+            training_command="python backend\\training\\train_syncan_model.py",
+            source_url="https://github.com/etas/SynCAN",
+        ),
+    }
+
+
+@app.get("/api/models")
+def get_models():
+    """Report actual readiness for the separate NASA and SynCAN models."""
+    return {"dataset_models": get_dataset_model_status()}
+
+
+@app.post("/api/battery/capacity")
+def estimate_battery_capacity(payload: dict):
+    """Estimate capacity from a NASA MATLAB discharge cycle's data fields."""
+    if battery_capacity_predictor.model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=battery_capacity_predictor.status()["load_error"]
+            or "NASA battery model is not ready; see GET /api/models.",
+        )
+    cycle = payload.get("cycle")
+    data = cycle.get("data") if isinstance(cycle, dict) else None
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="Expected cycle.data with NASA discharge measurement arrays.",
+        )
+    try:
+        result = battery_capacity_predictor.estimate(data)
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {
+        **result,
+        "battery_id": payload.get("battery_id"),
+        "cycle_index": payload.get("cycle_index"),
+    }
+
+
+@app.post("/api/can/anomaly")
+def detect_syncan_anomaly(record: dict):
+    """Score one official SynCAN-format row, not a project DBC frame."""
+    if not syncan_predictor.models:
+        raise HTTPException(
+            status_code=503,
+            detail=syncan_predictor.status()["load_error"]
+            or "SynCAN model is not ready; see GET /api/models.",
+        )
+    try:
+        return syncan_predictor.score(record)
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+
 @app.get("/api/health")
 def health():
     return {
@@ -364,6 +516,7 @@ def health():
         "model": predictor.metadata,
         "model_error": predictor.model_error,
         "forecast_horizon_seconds": HORIZON_SECONDS,
+        "dataset_models": get_dataset_model_status(),
     }
 
 
