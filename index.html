@@ -10,7 +10,7 @@
     content="SKIT006 — simulated EV digital twin monitoring and diagnostic interface. No physical CAN connection or AI prediction."
   >
 
-  <title>EV Monitor — Digital Twin & Predictive Diagnostics..</title>
+  <title>EV Monitor — Digital Twin & Predictive Diagnostics</title>
 
   <link rel="stylesheet" href="style.css">
 
@@ -18,6 +18,18 @@
   <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+
+  <!--
+    Three.js is vendored locally (js/vendor/three) and resolved here for the
+    Digital Twin 3D viewer. No model or library is fetched at runtime.
+  -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./js/vendor/three/three.module.js"
+    }
+  }
+  </script>
 
   <!-- Application scripts: keep this order -->
  <script defer src="js/simulator.js"></script>
@@ -412,9 +424,9 @@
               <p>Explore the systems behind every signal</p>
             </div>
 
-            <span class="tiny-label">
+            <span class="tiny-label" id="twin-source-label">
               <span class="status-dot"></span>
-              SVG ILLUSTRATION
+              3D MODEL · WEBGL
             </span>
           </div>
 
@@ -430,24 +442,46 @@
               class="vehicle-stage"
               tabindex="0"
               role="group"
-              aria-label="Interactive vehicle illustration. Use arrow keys to adjust the view, Home to reset."
+              aria-label="Interactive 3D electric vehicle. Drag to rotate, scroll to zoom, and click a highlighted component to inspect it."
             ></div>
           </div>
 
           <div class="twin-footer">
-            <span>
+            <span class="twin-hint">
               <i data-lucide="hand"></i>
-              Drag to tilt · select a component
+              Drag to orbit · scroll to zoom · click a part
             </span>
 
-            <button class="text-button" id="reset-view">
-              <i data-lucide="rotate-ccw"></i>
-              Reset view
-            </button>
+            <div class="twin-controls">
+              <button
+                class="twin-toggle"
+                id="toggle-autorotate"
+                type="button"
+                aria-pressed="true"
+              >
+                <i data-lucide="rotate-cw"></i>
+                Auto-Rotate
+              </button>
 
-            <span class="twin-coordinate">
-              X 024.8 &nbsp; Y 012.6 &nbsp; Z 000.0
-              <span>ILLUSTRATIVE</span>
+              <button
+                class="twin-toggle"
+                id="toggle-cutaway"
+                type="button"
+                aria-pressed="false"
+              >
+                <i data-lucide="layers"></i>
+                Cutaway
+              </button>
+
+              <button class="text-button" id="reset-view" type="button">
+                <i data-lucide="rotate-ccw"></i>
+                Reset view
+              </button>
+            </div>
+
+            <span class="twin-coordinate" id="twin-readout">
+              ROT <b>000°</b>
+              <span>3D VIEWPORT</span>
             </span>
           </div>
 
@@ -749,8 +783,9 @@
         <span class="pill">COMPONENT EXPLORER</span>
 
         <p>
-          Inspect the five monitored systems. This vector illustration
-          is not a physical or engineering simulation.
+          Inspect the five monitored systems in an interactive 3D model.
+          Component placement is a conceptual digital twin, not a physical
+          or engineering simulation.
         </p>
       </div>
 
