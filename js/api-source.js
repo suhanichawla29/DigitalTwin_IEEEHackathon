@@ -1,11 +1,10 @@
-```javascript
 (function (root) {
   'use strict';
 
   const EV = root.EV = root.EV || {};
   const API_URL = 'http://127.0.0.1:8000/api/readings';
 
-  // Map frontend scenario names to Python API scenario names.
+  // Map frontend scenario IDs to Python API scenario IDs.
   const SCENARIO_MAP = {
     normal: 'normal',
     'under-voltage': 'low_voltage',
@@ -30,22 +29,25 @@
     const response = await fetch(url);
 
     if (!response.ok) {
-      let detail = 'Failed to fetch EV readings';
+      let message = 'Failed to fetch EV readings';
 
       try {
-        const errorData = await response.json();
-        detail =
-          errorData.detail?.message ||
-          errorData.detail ||
-          errorData.error ||
-          detail;
+        const body = await response.json();
+        const detail =
+          body.detail?.message ||
+          body.detail ||
+          body.error;
+
+        if (detail) {
+          message = typeof detail === 'string'
+            ? detail
+            : JSON.stringify(detail);
+        }
       } catch (_) {
-        // Keep the default error message.
+        // Keep the fallback error message.
       }
 
-      throw new Error(
-        typeof detail === 'string' ? detail : JSON.stringify(detail)
-      );
+      throw new Error(message);
     }
 
     const data = await response.json();
@@ -68,6 +70,7 @@
       this.scenario = 'normal';
       this.busy = false;
       this.lastFaultKey = '';
+      this.pendingTick = false;
     }
 
     subscribe(callback) {
@@ -78,15 +81,23 @@
     }
 
     async tick() {
-      if (!this.running || this.busy) return;
+      if (!this.running) return;
+
+      // Queue a new request if one is already running.
+      if (this.busy) {
+        this.pendingTick = true;
+        return;
+      }
 
       this.busy = true;
+      this.pendingTick = false;
 
       try {
-        // Request readings for the currently selected scenario.
-        const raw = await getReadings(this.scenario);
+        const requestedScenario = this.scenario;
+        const raw = await getReadings(requestedScenario);
 
         const apiDiagnostics = raw.diagnostics || {};
+
         const apiFaults = Array.isArray(apiDiagnostics.faults)
           ? apiDiagnostics.faults
           : [];
@@ -113,6 +124,7 @@
               'No diagnostic faults detected.'
             );
 
+        // Illustrative demo scores, not real vehicle predictions.
         const health = hasFaults
           ? (severity === 'critical' ? 45 : 70)
           : 92;
@@ -121,7 +133,6 @@
           ? (severity === 'critical' ? 85 : 55)
           : 8;
 
-        // Convert backend diagnostic codes into frontend-compatible codes.
         const codeMap = {
           'over-temperature': 'over-temperature',
           'over-current': 'over-current',
@@ -130,21 +141,18 @@
           'over-voltage': 'over-voltage'
         };
 
-        const diagnosticCode = primaryFault
-          ? (
-              codeMap[primaryFault.code] ||
-              primaryFault.code
-            )
-          : 'normal';
-
         const diagnostics = {
-          code: diagnosticCode,
+          code: primaryFault
+            ? (codeMap[primaryFault.code] || primaryFault.code)
+            : 'normal',
+
           label,
           severity,
           description,
           risk,
           health,
           faults: apiFaults,
+
           systems: {
             battery: apiFaults.some(f =>
               [
@@ -172,7 +180,10 @@
           current: Number(raw.current),
           temperature: Number(raw.temperature),
           health,
-          scenario: this.scenario,
+
+          // Keep frontend IDs for EV.SCENARIOS lookups.
+          scenario: requestedScenario,
+
           seeded: false,
           diagnostics
         };
@@ -188,12 +199,11 @@
         this.current = reading;
         this.readings.push(reading);
 
-        // Keep the latest 300 readings for dashboard charts.
         if (this.readings.length > 300) {
           this.readings.shift();
         }
 
-        // Add an event when a new fault combination appears.
+        // Record new fault combinations in the event history.
         const faultKey = apiFaults
           .map(f => f.code)
           .sort()
@@ -204,7 +214,7 @@
             timestamp: reading.timestamp,
             type: 'fault',
             title: apiFaults.map(f => f.label).join(', '),
-            scenario: this.scenario,
+            scenario: requestedScenario,
             severity,
             message: description
           });
@@ -224,10 +234,18 @@
         };
 
         this.listeners.forEach(callback => callback(state, {}));
+
       } catch (error) {
         console.error('EV API error:', error);
+
       } finally {
         this.busy = false;
+
+        // If the scenario changed during a request, fetch it now.
+        if (this.running && this.pendingTick) {
+          this.pendingTick = false;
+          this.tick();
+        }
       }
     }
 
@@ -244,6 +262,7 @@
 
     pause() {
       this.running = false;
+      this.pendingTick = false;
 
       if (this.timer !== null) {
         clearInterval(this.timer);
@@ -254,11 +273,13 @@
 
     reset() {
       this.pause();
+
       this.readings = [];
       this.events = [];
       this.current = null;
       this.scenario = 'normal';
       this.lastFaultKey = '';
+
       this.start();
     }
 
@@ -268,8 +289,7 @@
       this.scenario = scenario;
       this.lastFaultKey = '';
 
-      // Fetch the new scenario immediately if the source is running.
-      if (this.running && !this.busy) {
+      if (this.running) {
         this.tick();
       }
     }
@@ -290,5 +310,5 @@
 
   EV.getApiReadings = getReadings;
   EV.ApiSource = ApiSource;
+
 })(window);
-```
