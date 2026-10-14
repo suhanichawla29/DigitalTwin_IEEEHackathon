@@ -792,6 +792,113 @@
           </button>
         </section>
       </div>
+
+      <section
+        class="panel can-monitor-panel"
+        id="can-monitor-panel"
+        aria-label="ECU encoder and CAN message monitor"
+      >
+        <div class="panel-header can-monitor-header">
+          <div>
+            <h2>ECU Encoder &amp; CAN Message Monitor</h2>
+            <p>DBC-encoded frames from the current simulated telemetry sample</p>
+          </div>
+          <span class="can-simulated-badge">
+            <span class="status-dot"></span>
+            SIMULATED CAN
+          </span>
+        </div>
+
+        <div class="can-monitor-toolbar">
+          <label class="can-filter">
+            <span class="sr-only">Filter CAN ID, message, ECU, or payload</span>
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input
+              id="can-history-filter"
+              type="search"
+              placeholder="Filter CAN ID, message, ECU, or payload"
+              autocomplete="off"
+            >
+          </label>
+          <span id="can-monitor-count" class="can-monitor-count" aria-live="polite">
+            Waiting for simulated frames
+          </span>
+          <button
+            type="button"
+            class="text-button can-control"
+            id="can-history-toggle"
+            aria-pressed="false"
+          >Pause monitor</button>
+          <button
+            type="button"
+            class="text-button can-control"
+            id="can-history-clear"
+          >Clear history</button>
+        </div>
+
+        <div class="can-subsection">
+          <h3>ECU Encoder &amp; CAN Message Monitor</h3>
+          <div class="table-scroll can-table-scroll">
+            <table class="can-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>CAN ID</th>
+                  <th>Message</th>
+                  <th>Source ECU</th>
+                  <th>DLC</th>
+                  <th>Raw payload</th>
+                  <th>Decoded signals</th>
+                  <th>SynCAN</th>
+                  <th>Decoder</th>
+                </tr>
+              </thead>
+              <tbody id="can-monitor-table">
+                <tr><td colspan="9" class="empty">Waiting for simulated CAN frames.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="can-subsection can-history-subsection">
+          <div class="can-history-heading">
+            <div>
+              <h3>CAN Message History</h3>
+              <p id="can-history-count">Recent frames from the same bounded monitor history.</p>
+            </div>
+            <span class="subtle-badge">LATEST 100</span>
+          </div>
+          <div class="table-scroll can-table-scroll">
+            <table class="can-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>CAN ID</th>
+                  <th>Message</th>
+                  <th>Source ECU</th>
+                  <th>DLC</th>
+                  <th>Raw payload</th>
+                  <th>Decoded signals</th>
+                  <th>SynCAN</th>
+                  <th>Decoder</th>
+                </tr>
+              </thead>
+              <tbody id="can-history-table">
+                <tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <section
+          class="can-message-detail"
+          id="can-message-detail"
+          aria-live="polite"
+          aria-label="Selected CAN message details"
+        >
+          <p>Select a CAN message to inspect its payload and decoded signals.</p>
+        </section>
+      </section>
     </section>
 
     <!-- Dedicated digital twin view -->

@@ -4,6 +4,7 @@
   const EV = root.EV = root.EV || {};
   const API_URL = 'http://127.0.0.1:8000/api/readings';
   const RESET_URL = 'http://127.0.0.1:8000/api/reset';
+  const CAN_MESSAGES_URL = 'http://127.0.0.1:8000/api/can/messages';
 
   // Map frontend scenario IDs to Python API scenario IDs.
   const SCENARIO_MAP = {
@@ -105,6 +106,12 @@
     }
 
     throw new Error(message);
+  }
+
+  async function clearCanMessages() {
+    const response = await fetch(CAN_MESSAGES_URL, { method: 'DELETE' });
+    if (response.ok) return;
+    throw new Error('Failed to clear simulated CAN message history');
   }
 
   /*
@@ -339,6 +346,9 @@
           health,
           prediction,
           datasetModels: raw.dataset_models || {},
+          canMessages: Array.isArray(raw.can_messages)
+            ? raw.can_messages
+            : [],
 
           // Preserve frontend scenario IDs for the dashboard history.
           scenario: requestedScenario,
@@ -413,6 +423,7 @@
         const state = {
           current: reading,
           readings: [...this.readings],
+          canMessages: reading.canMessages,
           events: [...this.events],
           running: this.running
         };
@@ -612,6 +623,7 @@
   }
 
   EV.getApiReadings = getReadings;
+  EV.clearCanMessages = clearCanMessages;
   EV.ApiSource = ApiSource;
 
 })(window);

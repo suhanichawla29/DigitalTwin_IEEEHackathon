@@ -6,6 +6,7 @@ import random
 import threading
 import math
 import os
+from collections import deque
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
@@ -14,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 # Make the backend folder available for imports
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from can_decoder import decode_can_frame
+from can_decoder import decode_can_frame, encode_can_frame
 from diagnostics import diagnose
 from predictor import (
     FailurePredictor,
@@ -45,6 +46,8 @@ app.add_middleware(
 # --------------------------------------------------
 
 _sample_count = 0
+CAN_HISTORY_LIMIT = 100
+_can_messages = deque(maxlen=CAN_HISTORY_LIMIT)
 SIMULATION_SPEED = float(os.environ.get("EV_SIMULATION_SPEED", "1.0"))
 if not math.isfinite(SIMULATION_SPEED) or SIMULATION_SPEED <= 0:
     raise ValueError("EV_SIMULATION_SPEED must be a positive finite number")
@@ -54,21 +57,15 @@ if not math.isfinite(SIMULATION_SPEED) or SIMULATION_SPEED <= 0:
 # --------------------------------------------------
 
 def make_demo_frame(voltage, current, temperature):
-    """Encode values into the custom DBC-compatible CAN format."""
-
-    raw_values = [
-        round(voltage * 10),
-        round(current * 10),
-        round((temperature + 40) * 10),
-    ]
-
-    data = bytearray()
-
-    for value in raw_values:
-        data.extend(int(value).to_bytes(2, "little"))
-
-    data.extend([0, 0])
-    return bytes(data)
+    """Encode the current authoritative telemetry using the project DBC."""
+    return encode_can_frame(
+        "ECU_Telemetry",
+        {
+            "Voltage": voltage,
+            "Current": current,
+            "Temperature": temperature,
+        },
+    )
 
 
 # --------------------------------------------------
@@ -321,13 +318,40 @@ def get_readings(
         _sample_count += 1
         values = simulation.advance()
 
-        # The gradual synthetic sensors retain the project's CAN encoding path.
         frame = make_demo_frame(
             values["voltage"],
             values["current"],
             values["temperature"],
         )
         readings = decode_can_frame(0x100, frame)
+        if readings["decode_status"] != "decoded":
+            raise RuntimeError(
+                "DBC telemetry frame could not be decoded: "
+                + readings.get("error", "unknown decoder error")
+            )
+        sample_timestamp = time.time()
+        can_message = {
+            "timestamp": sample_timestamp,
+            **{
+                key: readings[key]
+                for key in (
+                    "can_id",
+                    "message_name",
+                    "source_ecu",
+                    "dlc",
+                    "payload_hex",
+                    "payload_bytes",
+                    "decoded_signals",
+                    "decode_status",
+                )
+            },
+            "source": "SIMULATED_CAN",
+            "synCAN_status": "not_evaluated",
+            "synCAN_note": (
+                "Project DBC frame has no verified mapping to SynCAN IDs/signals."
+            ),
+        }
+        _can_messages.append(can_message)
         diagnostics = diagnose(
             voltage=readings["voltage"],
             current=readings["current"],
@@ -343,10 +367,49 @@ def get_readings(
         "scenario": selected_scenario,
         "faults": faults if faults is not None else [],
         "sample_index": _sample_count,
-        "timestamp": time.time(),
+        "timestamp": sample_timestamp,
+        "can_message": can_message,
+        "can_messages": list(_can_messages),
         "prediction": prediction,
         "dataset_models": get_dataset_model_status(),
     }
+
+
+@app.get("/api/can/messages")
+def get_can_messages(
+    can_id: Annotated[str | None, Query()] = None,
+    message_name: Annotated[str | None, Query()] = None,
+):
+    """Return bounded history of DBC-decoded simulated CAN frames."""
+    with _episode_lock:
+        messages = list(_can_messages)
+
+    if can_id:
+        normalized_id = can_id.casefold()
+        messages = [
+            message for message in messages
+            if message["can_id"].casefold() == normalized_id
+        ]
+    if message_name:
+        query = message_name.casefold()
+        messages = [
+            message for message in messages
+            if query in (message["message_name"] or "").casefold()
+        ]
+    return {
+        "source": "SIMULATED_CAN",
+        "history_limit": CAN_HISTORY_LIMIT,
+        "count": len(messages),
+        "messages": messages,
+    }
+
+
+@app.delete("/api/can/messages")
+def clear_can_messages():
+    """Clear the bounded CAN history without resetting the simulation."""
+    with _episode_lock:
+        _can_messages.clear()
+    return {"status": "cleared", "count": 0}
 
 
 @app.get("/api/scenarios")
@@ -553,6 +616,7 @@ def reset_simulation():
     with _episode_lock:
         simulation.reset()
         predictor.reset()
+        _can_messages.clear()
         _sample_count = 0
 
     return {

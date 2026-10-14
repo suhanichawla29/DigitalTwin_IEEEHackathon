@@ -137,6 +137,9 @@ const source = new EV.ApiSource();
   let historyPage = 0;
   let historyQuery = '';
   let menuOpen = false;
+  let canHistoryPaused = false;
+  let canHistoryFilter = '';
+  let selectedCanMessage = null;
 
   const controller = new AbortController();
 
@@ -246,6 +249,119 @@ const source = new EV.ApiSource();
         </td>
       </tr>
     `;
+  }
+
+  function renderCanHistory() {
+    if (!state) return;
+
+    const messages = Array.isArray(state.canMessages)
+      ? state.canMessages
+      : [];
+    const matching = messages.filter(message => [
+      message.can_id,
+      message.message_name,
+      message.source_ecu,
+      message.payload_hex
+    ].join(' ').toLowerCase().includes(canHistoryFilter));
+    const newest = matching.slice().reverse();
+    const selected = newest.find(message =>
+      message.timestamp + ':' + message.can_id === selectedCanMessage
+    ) || newest[0] || null;
+
+    if (selected) {
+      selectedCanMessage = selected.timestamp + ':' + selected.can_id;
+    }
+
+    const rowMarkup = message => {
+      const signals = (message.decoded_signals || [])
+        .map(signal => {
+          const value = Number(signal.value);
+          const rendered = Number.isFinite(value)
+            ? value.toFixed(2)
+            : String(signal.value);
+          return escape(signal.name + ': ' + rendered +
+            (signal.unit ? ' ' + signal.unit : ''));
+        })
+        .join(' · ');
+      const key = message.timestamp + ':' + message.can_id;
+      const decodeState = message.decode_status === 'decoded'
+        ? 'Decoded'
+        : 'Error: ' + (message.error || 'unavailable');
+      const canTime = Number(message.timestamp) * 1000;
+
+      return `
+        <tr
+          class="can-message-row${key === selectedCanMessage ? ' selected' : ''}"
+          data-can-key="${escape(key)}"
+          tabindex="0"
+          role="button"
+          aria-label="Inspect ${escape(message.can_id)} ${escape(message.message_name || 'unknown message')}"
+          aria-pressed="${key === selectedCanMessage}"
+        >
+          <td><time datetime="${new Date(canTime).toISOString()}">${escape(time(canTime))}</time></td>
+          <td><code>${escape(message.can_id || 'Unknown')}</code></td>
+          <td>${escape(message.message_name || 'Unknown')}</td>
+          <td>${escape(message.source_ecu || 'Unknown')}</td>
+          <td>${escape(message.dlc)}</td>
+          <td><code>${escape(message.payload_hex || 'Unavailable')}</code></td>
+          <td>${signals || 'Unavailable'}</td>
+          <td>${escape(message.synCAN_status === 'evaluated'
+            ? message.synCAN_anomaly ? 'Anomaly' : 'Normal'
+            : 'Not evaluated')}</td>
+          <td>${escape(decodeState)}</td>
+        </tr>
+      `;
+    };
+
+    $('can-monitor-count').textContent =
+      matching.length + ' / ' + messages.length + ' recent frames';
+    $('can-monitor-table').innerHTML = newest.slice(0, 5).map(rowMarkup).join('')
+      || '<tr><td colspan="9" class="empty">No CAN frames match this filter yet.</td></tr>';
+    $('can-history-table').innerHTML = newest.slice(0, 25).map(rowMarkup).join('')
+      || '<tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>';
+    $('can-history-count').textContent =
+      'Showing up to 25 of ' + matching.length + ' matching frames';
+
+    if (!selected) {
+      $('can-message-detail').innerHTML =
+        '<p>Select a CAN message to inspect its payload and decoded signals.</p>';
+      return;
+    }
+
+    const detailSignals = (selected.decoded_signals || []).map(signal => `
+      <div class="can-signal-detail">
+        <span>${escape(signal.name)}</span>
+        <strong>${escape(Number.isFinite(Number(signal.value))
+          ? Number(signal.value).toFixed(2)
+          : signal.value)}${signal.unit ? ' ' + escape(signal.unit) : ''}</strong>
+      </div>
+    `).join('') || '<p>No decoded signals are available for this frame.</p>';
+
+    $('can-message-detail').innerHTML = `
+      <div class="can-detail-payload">
+        <span>Raw payload · ${escape(selected.dlc)} bytes</span>
+        <code>${escape(selected.payload_hex || 'Unavailable')}</code>
+      </div>
+      <div class="can-detail-signals">
+        <span>Decoded signals · ${escape(selected.message_name || 'Unknown message')}</span>
+        ${detailSignals}
+      </div>
+      <p class="can-decode-note">
+        ${escape(selected.decode_status === 'decoded'
+          ? 'DBC decoder: decoded'
+          : 'DBC decoder error: ' + (selected.error || 'unknown error'))}
+        · SynCAN: ${escape(selected.synCAN_status === 'evaluated'
+          ? (selected.synCAN_anomaly ? 'anomaly' : 'normal')
+          : 'not evaluated; no verified mapping from this DBC frame')}
+      </p>
+    `;
+  }
+
+  function selectCanMessage(event) {
+    const row = event.target.closest('tr[data-can-key]');
+    if (!row) return;
+    selectedCanMessage = row.dataset.canKey;
+    renderCanHistory();
   }
 
   function renderHistory() {
@@ -698,6 +814,9 @@ const source = new EV.ApiSource();
 
     twin.update(state);
     charts.update(state, initialRender);
+    if (!canHistoryPaused) {
+      renderCanHistory();
+    }
 
     if (route === 'live-data') {
       renderReadings(
@@ -1070,6 +1189,47 @@ const source = new EV.ApiSource();
 
   listen($('time-range'), 'change', event => {
     charts.setRange(event.target.value);
+  });
+
+  listen($('can-history-filter'), 'input', event => {
+    canHistoryFilter = event.target.value.trim().toLowerCase();
+    renderCanHistory();
+  });
+
+  listen($('can-history-toggle'), 'click', () => {
+    canHistoryPaused = !canHistoryPaused;
+    $('can-history-toggle').textContent = canHistoryPaused
+      ? 'Resume monitor'
+      : 'Pause monitor';
+    $('can-history-toggle').setAttribute(
+      'aria-pressed',
+      String(canHistoryPaused)
+    );
+    if (!canHistoryPaused) renderCanHistory();
+  });
+
+  listen($('can-history-clear'), 'click', async () => {
+    try {
+      await EV.clearCanMessages();
+      selectedCanMessage = null;
+      if (state) state.canMessages = [];
+      renderCanHistory();
+    } catch (error) {
+      console.error('CAN history clear error:', error);
+      toast('Could not clear CAN history: ' + error.message);
+    }
+  });
+
+  ['can-monitor-table', 'can-history-table'].forEach(id => {
+    listen($(id), 'click', selectCanMessage);
+    listen($(id), 'keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const row = event.target.closest('tr[data-can-key]');
+      if (!row) return;
+      event.preventDefault();
+      selectedCanMessage = row.dataset.canKey;
+      renderCanHistory();
+    });
   });
 
   // Fault scenario selector.
