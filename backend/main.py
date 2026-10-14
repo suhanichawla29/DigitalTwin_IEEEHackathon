@@ -5,7 +5,7 @@ import time
 import math
 import random
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 # Make the backend folder available for imports
@@ -48,7 +48,7 @@ def low_frequency_drift(t, freq=0.05, amplitude=0.5):
 
 
 def generate_realistic_reading():
-    """Generate a simulated healthy EV reading with small variations."""
+    """Generate simulated healthy readings with small variations."""
     t = time.time() - _start_time
 
     voltage = (
@@ -126,12 +126,15 @@ def home():
 
 
 @app.get("/api/readings")
-def get_readings(scenario: str = "normal"):
+def get_readings(
+    scenario: str = Query(default="normal")
+):
     """
-    Get simulated CAN readings and Python diagnostic results.
+    Return simulated CAN readings and diagnostic results.
 
     Examples:
       /api/readings
+      /api/readings?scenario=normal
       /api/readings?scenario=over_temperature
       /api/readings?scenario=multiple_faults
     """
@@ -150,14 +153,18 @@ def get_readings(scenario: str = "normal"):
         # Healthy baseline with small sensor variations
         voltage, current, temperature = generate_realistic_reading()
     else:
-        # Fault scenarios use controlled values for repeatable tests
+        # Fixed values make fault scenarios repeatable
         voltage, current, temperature = SCENARIOS[scenario]
 
     _sample_count += 1
 
+    # Encode simulated readings into a CAN frame
     frame = make_demo_frame(voltage, current, temperature)
+
+    # Decode the frame using the existing DBC decoder
     readings = decode_can_frame(0x100, frame)
 
+    # Run the existing Python diagnostic rules
     diagnostics = diagnose(
         voltage=readings["voltage"],
         current=readings["current"],
@@ -177,14 +184,17 @@ def get_readings(scenario: str = "normal"):
 
 @app.get("/api/scenarios")
 def get_scenarios():
-    """List available demonstration scenarios."""
+    """List the available demonstration scenarios."""
     return {
         "scenarios": [
-            {"id": name, "values": {
-                "voltage": values[0],
-                "current": values[1],
-                "temperature": values[2],
-            }}
+            {
+                "id": name,
+                "values": {
+                    "voltage": values[0],
+                    "current": values[1],
+                    "temperature": values[2],
+                },
+            }
             for name, values in SCENARIOS.items()
         ]
     }
