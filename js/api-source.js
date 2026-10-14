@@ -20,11 +20,34 @@
     multiple_faults: 'multiple_faults'
   };
 
+  function mapScenario(scenario) {
+    if (!Object.prototype.hasOwnProperty.call(SCENARIO_MAP, scenario)) {
+      throw new RangeError('Unsupported scenario: ' + scenario);
+    }
+
+    return SCENARIO_MAP[scenario];
+  }
+
   async function getReadings(scenario = 'normal') {
-    const apiScenario = SCENARIO_MAP[scenario] || scenario;
     const url = new URL(API_URL);
 
-    url.searchParams.set('scenario', apiScenario);
+    if (Array.isArray(scenario)) {
+      const faults = scenario.map(mapScenario);
+
+      if (faults.includes('normal')) {
+        if (faults.length !== 1) {
+          throw new RangeError('Normal operation cannot be combined with faults');
+        }
+
+        url.searchParams.set('scenario', 'normal');
+      } else if (faults.length) {
+        faults.forEach(fault => url.searchParams.append('faults', fault));
+      } else {
+        url.searchParams.set('scenario', 'normal');
+      }
+    } else {
+      url.searchParams.set('scenario', mapScenario(scenario));
+    }
 
     const response = await fetch(url);
 
@@ -68,9 +91,12 @@
       this.events = [];
       this.current = null;
       this.scenario = 'normal';
+      this.scenarios = [];
+      this.legacyScenario = null;
       this.busy = false;
       this.lastFaultKey = '';
       this.pendingTick = false;
+      this.pendingForce = false;
     }
 
     subscribe(callback) {
@@ -80,21 +106,26 @@
       return () => this.listeners.delete(callback);
     }
 
-    async tick() {
-      if (!this.running) return;
+    async tick(force = false) {
+      if (!this.running && !force) return;
 
       // Queue a new request if one is already running.
       if (this.busy) {
         this.pendingTick = true;
+        this.pendingForce = this.pendingForce || force;
         return;
       }
 
       this.busy = true;
       this.pendingTick = false;
+      this.pendingForce = false;
 
       try {
         const requestedScenario = this.scenario;
-        const raw = await getReadings(requestedScenario);
+        const requestedFaults = [...this.scenarios];
+        const raw = await getReadings(
+          this.legacyScenario || requestedFaults
+        );
 
         const apiDiagnostics = raw.diagnostics || {};
 
@@ -102,27 +133,25 @@
           ? apiDiagnostics.faults
           : [];
 
-        const primaryFault = apiFaults[0] || null;
-
         const hasFaults =
           apiDiagnostics.status === 'FAULT' ||
           apiFaults.length > 0 ||
           raw.ecu_status === 'FAULT';
 
-        const severity = primaryFault
-          ? primaryFault.severity
-          : 'normal';
+        const severity = apiFaults.some(f => f.severity === 'critical')
+          ? 'critical'
+          : hasFaults ? 'warning' : 'normal';
 
-        const label = primaryFault
-          ? primaryFault.label
+        const label = apiFaults.length
+          ? apiFaults.map(f => f.label).join(', ')
           : 'Normal operation';
 
-        const description = primaryFault
-          ? primaryFault.description
+        const description = apiFaults.length
+          ? apiFaults.map(f => f.description).join(' ')
           : (
-              apiDiagnostics.message ||
-              'No diagnostic faults detected.'
-            );
+            apiDiagnostics.message ||
+            'No diagnostic faults detected.'
+          );
 
         // Illustrative demo scores, not real vehicle predictions.
         const health = hasFaults
@@ -141,9 +170,13 @@
           'over-voltage': 'over-voltage'
         };
 
+        const faultCodes = apiFaults.map(f =>
+          codeMap[f.code] || f.code
+        );
+
         const diagnostics = {
-          code: primaryFault
-            ? (codeMap[primaryFault.code] || primaryFault.code)
+          code: faultCodes.length
+            ? faultCodes.join(',')
             : 'normal',
 
           label,
@@ -170,6 +203,19 @@
               f.code === 'over-temperature'
             ) ? 'critical' : 'normal',
 
+            bms: apiFaults.some(f =>
+              [
+                'under-voltage',
+                'low-voltage',
+                'over-voltage',
+                'over-temperature'
+              ].includes(f.code)
+            ) ? 'warning' : 'normal',
+
+            vcu: apiFaults.some(f =>
+              f.code === 'over-current'
+            ) ? 'critical' : 'normal',
+
             communication: 'normal'
           }
         };
@@ -181,8 +227,9 @@
           temperature: Number(raw.temperature),
           health,
 
-          // Keep frontend IDs for EV.SCENARIOS lookups.
+          // Preserve frontend scenario IDs for the dashboard history.
           scenario: requestedScenario,
+          scenarios: requestedFaults,
 
           seeded: false,
           diagnostics
@@ -203,22 +250,36 @@
           this.readings.shift();
         }
 
-        // Record new fault combinations in the event history.
+        // Record changes to the active fault combination.
+        const previousFaultKey = this.lastFaultKey;
         const faultKey = apiFaults
           .map(f => f.code)
           .sort()
           .join(',');
 
-        if (faultKey && faultKey !== this.lastFaultKey) {
-          this.events.unshift({
+        let event = null;
+        if (faultKey && faultKey !== previousFaultKey) {
+          event = {
             timestamp: reading.timestamp,
             type: 'fault',
             title: apiFaults.map(f => f.label).join(', '),
             scenario: requestedScenario,
             severity,
             message: description
-          });
+          };
+        } else if (!faultKey && previousFaultKey) {
+          event = {
+            timestamp: reading.timestamp,
+            type: 'recovery',
+            title: 'Returned to normal operation',
+            scenario: requestedScenario,
+            severity: 'normal',
+            message: 'Active simulated faults have cleared.'
+          };
+        }
 
+        if (event) {
+          this.events.unshift(event);
           if (this.events.length > 100) {
             this.events.pop();
           }
@@ -233,18 +294,34 @@
           running: this.running
         };
 
-        this.listeners.forEach(callback => callback(state, {}));
+        this.listeners.forEach(callback => callback(
+          state,
+          event ? { type: event.type, event } : {}
+        ));
 
       } catch (error) {
         console.error('EV API error:', error);
+        const state = {
+          current: this.current,
+          readings: [...this.readings],
+          events: [...this.events],
+          running: this.running
+        };
+
+        this.listeners.forEach(callback => callback(state, {
+          type: 'error',
+          error
+        }));
 
       } finally {
         this.busy = false;
 
         // If the scenario changed during a request, fetch it now.
-        if (this.running && this.pendingTick) {
+        if (this.pendingTick && (this.running || this.pendingForce)) {
+          const force = this.pendingForce;
           this.pendingTick = false;
-          this.tick();
+          this.pendingForce = false;
+          this.tick(force);
         }
       }
     }
@@ -262,7 +339,9 @@
 
     pause() {
       this.running = false;
-      this.pendingTick = false;
+      if (!this.pendingForce) {
+        this.pendingTick = false;
+      }
 
       if (this.timer !== null) {
         clearInterval(this.timer);
@@ -278,6 +357,8 @@
       this.events = [];
       this.current = null;
       this.scenario = 'normal';
+      this.scenarios = [];
+      this.legacyScenario = null;
       this.lastFaultKey = '';
 
       this.start();
@@ -286,12 +367,49 @@
     setScenario(scenario) {
       if (!scenario) return;
 
-      this.scenario = scenario;
-      this.lastFaultKey = '';
+      const apiScenario = mapScenario(scenario);
 
-      if (this.running) {
-        this.tick();
+      if (apiScenario === 'multiple_faults') {
+        this.scenarios = [];
+        this.scenario = scenario;
+        this.legacyScenario = apiScenario;
+        this.tick(true);
+        return;
       }
+
+      this.setScenarios(apiScenario === 'normal' ? [] : [scenario]);
+    }
+
+    setScenarios(scenarios) {
+      if (!Array.isArray(scenarios)) {
+        throw new TypeError('Scenarios must be provided as an array');
+      }
+
+      const normalized = [];
+      scenarios.forEach(scenario => {
+        const apiScenario = mapScenario(scenario);
+        if (apiScenario === 'normal') return;
+
+        const frontendScenario = {
+          low_voltage: 'under-voltage',
+          over_voltage: 'over-voltage',
+          over_current: 'over-current',
+          over_temperature: 'over-temperature'
+        }[apiScenario];
+
+        if (!frontendScenario) {
+          throw new RangeError('Unsupported fault scenario: ' + scenario);
+        }
+
+        if (!normalized.includes(frontendScenario)) {
+          normalized.push(frontendScenario);
+        }
+      });
+
+      this.scenarios = normalized;
+      this.scenario = normalized.length ? normalized.join(',') : 'normal';
+      this.legacyScenario = null;
+      this.tick(true);
     }
 
     report() {

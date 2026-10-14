@@ -4,6 +4,7 @@ import sys
 import time
 import math
 import random
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -111,6 +112,17 @@ SCENARIOS = {
     "multiple_faults": (270, 120, 85),
 }
 
+FAULT_SCENARIOS = {
+    name: values
+    for name, values in SCENARIOS.items()
+    if name in {
+        "low_voltage",
+        "over_voltage",
+        "over_current",
+        "over_temperature",
+    }
+}
+
 
 # --------------------------------------------------
 # API endpoints
@@ -127,7 +139,8 @@ def home():
 
 @app.get("/api/readings")
 def get_readings(
-    scenario: str = Query(default="normal")
+    scenario: Annotated[str | None, Query()] = None,
+    faults: Annotated[list[str] | None, Query()] = None,
 ):
     """
     Return simulated CAN readings and diagnostic results.
@@ -137,24 +150,76 @@ def get_readings(
       /api/readings?scenario=normal
       /api/readings?scenario=over_temperature
       /api/readings?scenario=multiple_faults
+      /api/readings?faults=low_voltage&faults=over_current
     """
     global _sample_count
 
-    if scenario not in SCENARIOS:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "message": "Unknown scenario",
-                "available_scenarios": list(SCENARIOS.keys()),
-            },
-        )
+    if faults is not None:
+        if scenario is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="Use either scenario or faults, not both.",
+            )
 
-    if scenario == "normal":
-        # Healthy baseline with small sensor variations
-        voltage, current, temperature = generate_realistic_reading()
+        if len(faults) != len(set(faults)):
+            raise HTTPException(
+                status_code=400,
+                detail="Duplicate fault selections are not allowed.",
+            )
+
+        unknown_faults = sorted(set(faults) - set(FAULT_SCENARIOS))
+        if unknown_faults:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Unknown fault selection",
+                    "invalid_faults": unknown_faults,
+                    "available_faults": list(FAULT_SCENARIOS),
+                },
+            )
+
+        if "low_voltage" in faults and "over_voltage" in faults:
+            raise HTTPException(
+                status_code=400,
+                detail="Low-voltage and over-voltage cannot occur in the same sample.",
+            )
+
+        if faults:
+            values = [400, 35, 45]
+            for fault in faults:
+                fault_values = FAULT_SCENARIOS[fault]
+                if fault in {"low_voltage", "over_voltage"}:
+                    values[0] = fault_values[0]
+                elif fault == "over_current":
+                    values[1] = fault_values[1]
+                elif fault == "over_temperature":
+                    values[2] = fault_values[2]
+
+            voltage, current, temperature = values
+            scenario_name = faults[0] if len(faults) == 1 else "combined"
+        else:
+            voltage, current, temperature = generate_realistic_reading()
+            scenario_name = "normal"
     else:
-        # Fixed values make fault scenarios repeatable
-        voltage, current, temperature = SCENARIOS[scenario]
+        scenario = scenario or "normal"
+
+        if scenario not in SCENARIOS:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Unknown scenario",
+                    "available_scenarios": list(SCENARIOS.keys()),
+                },
+            )
+
+        if scenario == "normal":
+            # Healthy baseline with small sensor variations
+            voltage, current, temperature = generate_realistic_reading()
+        else:
+            # Fixed values make fault scenarios repeatable
+            voltage, current, temperature = SCENARIOS[scenario]
+
+        scenario_name = scenario
 
     _sample_count += 1
 
@@ -176,7 +241,8 @@ def get_readings(
         "ecu_status": diagnostics["status"],
         "diagnostics": diagnostics,
         "source": "SIMULATED_CAN",
-        "scenario": scenario,
+        "scenario": scenario_name,
+        "faults": faults if faults is not None else [],
         "sample_index": _sample_count,
         "timestamp": time.time(),
     }

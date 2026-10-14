@@ -1078,14 +1078,19 @@
       </div>
 
       <p>
-        Apply one demo scenario at a time. The same sample updates
-        telemetry, ECU states, vehicle highlights, charts, and diagnostics.
+        Select Normal operation or one or more compatible fault conditions.
+        The same sample updates telemetry, ECU states, vehicle highlights,
+        charts, and diagnostics.
       </p>
 
-      <div class="scenario-options">
+      <div
+        class="scenario-options"
+        role="group"
+        aria-label="Select normal operation or fault conditions"
+      >
         <label>
           <input
-            type="radio"
+            type="checkbox"
             name="scenario"
             value="normal"
             checked
@@ -1097,13 +1102,13 @@
 
           <span>
             <strong>Normal operation</strong>
-            <small>348 V · 32 A · 36 °C nominal</small>
+            <small>400 V · 35 A · 45 °C nominal</small>
           </span>
         </label>
 
         <label>
           <input
-            type="radio"
+            type="checkbox"
             name="scenario"
             value="over-temperature"
           >
@@ -1114,13 +1119,13 @@
 
           <span>
             <strong>Over-temperature</strong>
-            <small>Thermal system & BMS · approx. 72 °C</small>
+            <small>Thermal system & BMS · approx. 85 °C</small>
           </span>
         </label>
 
         <label>
           <input
-            type="radio"
+            type="checkbox"
             name="scenario"
             value="under-voltage"
           >
@@ -1131,13 +1136,30 @@
 
           <span>
             <strong>Under-voltage</strong>
-            <small>Battery system & BMS · approx. 276 V</small>
+            <small>Battery system & BMS · approx. 270 V</small>
           </span>
         </label>
 
         <label>
           <input
-            type="radio"
+            type="checkbox"
+            name="scenario"
+            value="over-voltage"
+          >
+
+          <span class="scenario-icon warning">
+            <i data-lucide="battery-charging"></i>
+          </span>
+
+          <span>
+            <strong>Over-voltage</strong>
+            <small>Battery system & BMS · approx. 450 V</small>
+          </span>
+        </label>
+
+        <label>
+          <input
+            type="checkbox"
             name="scenario"
             value="over-current"
           >
@@ -1148,7 +1170,7 @@
 
           <span>
             <strong>Over-current</strong>
-            <small>Motor controller & VCU · approx. 96 A</small>
+            <small>Motor controller & VCU · approx. 120 A</small>
           </span>
         </label>
       </div>
