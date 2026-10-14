@@ -23,6 +23,7 @@ from predictor import (
 )
 from battery_predictor import BatteryCapacityPredictor
 from syncan_predictor import SynCANPredictor
+from ev_simulator_predictor import EVSimulatorAnomalyPredictor
 from training.train_nasa_model import DATA_DIR as NASA_DATA_DIR
 from training.train_syncan_model import (
     DATA_DIR as SYNCAN_DATA_DIR,
@@ -218,6 +219,7 @@ simulation = SimulationState()
 predictor = FailurePredictor()
 battery_capacity_predictor = BatteryCapacityPredictor()
 syncan_predictor = SynCANPredictor()
+ev_simulator_predictor = EVSimulatorAnomalyPredictor()
 
 
 # --------------------------------------------------
@@ -337,6 +339,11 @@ def get_readings(
                 + readings.get("error", "unknown decoder error")
             )
         sample_timestamp = time.time()
+        if (
+            ev_simulator_predictor.model is None
+            and ev_simulator_predictor.error is None
+        ):
+            ev_simulator_predictor.reload()
         syncan_available = bool(syncan_predictor.models)
         can_message = {
             "timestamp": sample_timestamp,
@@ -354,6 +361,11 @@ def get_readings(
                 )
             },
             "source": "SIMULATED_CAN",
+            "scenario": selected_scenario,
+            "ev_anomaly": ev_simulator_predictor.evaluate({
+                "timestamp": sample_timestamp,
+                **readings,
+            }),
             "synCAN_status": (
                 "incompatible_features"
                 if syncan_available
@@ -390,6 +402,7 @@ def get_readings(
         "can_messages": list(_can_messages),
         "prediction": prediction,
         "dataset_models": get_dataset_model_status(),
+        "live_can_detector": ev_simulator_detector_status(),
     }
 
 
@@ -563,10 +576,35 @@ def get_dataset_model_status():
     }
 
 
+def ev_simulator_detector_status():
+    if ev_simulator_predictor.model is None and ev_simulator_predictor.error is None:
+        ev_simulator_predictor.reload()
+    return ev_simulator_predictor.status()
+
+
+def syncan_offline_evaluation_status():
+    metadata = syncan_predictor.metadata
+    evaluation = metadata.get("evaluation")
+    return {
+        "status": "available" if isinstance(evaluation, dict) else "unavailable",
+        "source": metadata.get("source", "ETAS SynCAN dataset"),
+        "metrics": evaluation,
+        "by_test_file": metadata.get("evaluation_by_test_file"),
+        "note": (
+            "Offline evaluation uses SynCAN test archives; it does not evaluate "
+            "live project DBC frames."
+        ),
+    }
+
+
 @app.get("/api/models")
 def get_models():
-    """Report actual readiness for the separate NASA and SynCAN models."""
-    return {"dataset_models": get_dataset_model_status()}
+    """Report dataset models separately from live simulated-CAN evaluation."""
+    return {
+        "dataset_models": get_dataset_model_status(),
+        "syncan_offline_evaluation": syncan_offline_evaluation_status(),
+        "live_can_detector": ev_simulator_detector_status(),
+    }
 
 
 @app.post("/api/battery/capacity")
@@ -624,6 +662,8 @@ def health():
         "model_error": predictor.model_error,
         "forecast_horizon_seconds": HORIZON_SECONDS,
         "dataset_models": get_dataset_model_status(),
+        "syncan_offline_evaluation": syncan_offline_evaluation_status(),
+        "live_can_detector": ev_simulator_detector_status(),
     }
 
 
@@ -635,6 +675,7 @@ def reset_simulation():
     with _episode_lock:
         simulation.reset()
         predictor.reset()
+        ev_simulator_predictor.reset()
         _can_messages.clear()
         _sample_count = 0
 

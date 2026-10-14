@@ -86,3 +86,29 @@ without retraining or overwriting it, run from the repository root:
 The report identifies `Label=0` as normal and `Label=1` as intrusion and
 includes the confusion matrix, precision, recall, F1, false positives, and
 missed intrusions.
+
+### Live EV simulator anomaly detector
+
+Live project DBC frames are evaluated by a separate EV simulator classifier,
+not by SynCAN. Train it from the repository root with:
+
+```powershell
+.\.venv\Scripts\python.exe backend\training\train_ev_simulator_anomaly.py
+```
+
+The script generates deterministic, seeded episodes using the existing
+`SimulationState`, encodes each sample with the `0x100 ECU_Telemetry` DBC
+definition, decodes the resulting CAN bytes, and extracts decoded voltage,
+current, temperature, elapsed time, and per-sample changes. Normal episodes
+are labelled `normal`; explicitly injected degradation/fault episodes are
+labelled `injected_non_normal`. Validation uses separate complete episodes and
+seeds, not a random row split. The model and those validation metrics are saved
+to `backend\models\ev_simulator_anomaly.joblib`.
+
+The Dashboard CAN Message History labels the result as an EV simulator
+detector output and shows SynCAN separately as incompatible for these frames.
+`GET /api/models` and `GET /api/health` expose live detector readiness and
+SynCAN offline evaluation as separate fields. The EV score is a classifier
+score against simulator-generated episode labels, not a calibrated real-world
+probability, trained-vehicle result, or causal fault diagnosis. All CAN
+messages remain simulated; no physical vehicle or CAN hardware is connected.

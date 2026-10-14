@@ -292,6 +292,18 @@ const source = new EV.ApiSource();
         ? 'Decoded'
         : 'Error: ' + (message.error || 'unavailable');
       const canTime = Number(message.timestamp) * 1000;
+      const evAnomaly = message.ev_anomaly || {};
+      const evScore = Number(evAnomaly.anomaly_score);
+      const evAnomalyState = evAnomaly.status === 'evaluated'
+        ? (evAnomaly.is_anomaly ? 'Anomaly' : 'Normal') +
+          (Number.isFinite(evScore) ? ' · ' + evScore.toFixed(2) : '')
+        : evAnomaly.status === 'warming_up'
+          ? 'Warming up'
+          : evAnomaly.status === 'model_unavailable'
+            ? 'Model unavailable'
+            : evAnomaly.status === 'not_evaluated'
+              ? 'Not evaluated'
+              : 'Unavailable';
       const synCANState = message.synCAN_status === 'evaluated'
         ? message.synCAN_anomaly ? 'Anomaly detected' : 'Normal'
         : message.synCAN_status === 'warming_up'
@@ -318,6 +330,7 @@ const source = new EV.ApiSource();
           <td>${escape(message.dlc)}</td>
           <td><code>${escape(message.payload_hex || 'Unavailable')}</code></td>
           <td>${signals || 'Unavailable'}</td>
+          <td title="${escape(evAnomaly.reason || evAnomaly.source || '')}">${escape(evAnomalyState)}</td>
           <td>${escape(synCANState)}</td>
           <td>${escape(decodeState)}</td>
         </tr>
@@ -327,7 +340,7 @@ const source = new EV.ApiSource();
     $('can-history-live-count').textContent =
       matching.length + ' / ' + messages.length + ' recent frames';
     $('can-history-table').innerHTML = newest.slice(0, 25).map(rowMarkup).join('')
-      || '<tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>';
+      || '<tr><td colspan="10" class="empty">CAN message history is empty.</td></tr>';
     $('can-history-count').textContent =
       'Showing up to 25 of ' + matching.length + ' matching frames';
 
@@ -355,6 +368,20 @@ const source = new EV.ApiSource();
           : selected.synCAN_status === 'model_unavailable'
             ? selected.synCAN_note || 'SynCAN model unavailable.'
             : 'Not evaluated.';
+    const selectedEv = selected.ev_anomaly || {};
+    const selectedEvScore = Number(selectedEv.anomaly_score);
+    const evDetail = selectedEv.status === 'evaluated'
+      ? (selectedEv.is_anomaly ? 'Anomaly' : 'Normal') +
+        (Number.isFinite(selectedEvScore)
+          ? ' · classifier score: ' + selectedEvScore.toFixed(3)
+          : '') +
+        (selectedEv.reason ? ' · ' + selectedEv.reason : '')
+      : selectedEv.reason ||
+        (selectedEv.status === 'warming_up'
+          ? 'Waiting for another decoded frame.'
+          : selectedEv.status === 'model_unavailable'
+            ? 'EV simulator anomaly model unavailable.'
+            : 'EV simulator anomaly result unavailable.');
 
     $('can-message-detail').innerHTML = `
       <div class="can-detail-payload">
@@ -369,6 +396,7 @@ const source = new EV.ApiSource();
         ${escape(selected.decode_status === 'decoded'
           ? 'DBC decoder: decoded'
           : 'DBC decoder error: ' + (selected.error || 'unknown error'))}
+        · EV simulator detector (${escape(selectedEv.source || 'unavailable')}): ${escape(evDetail)}
         · SynCAN: ${escape(synCANDetail)}
       </p>
     `;
