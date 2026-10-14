@@ -58,6 +58,20 @@
     critical: 'Critical'
   })[state] || 'Unknown';
 
+  function scenarioLabel(scenario) {
+    const labels = {
+      'under-voltage': 'Under-voltage',
+      'over-voltage': 'Over-voltage',
+      'over-current': 'Over-current',
+      'over-temperature': 'Over-temperature'
+    };
+
+    return String(scenario)
+      .split(',')
+      .map(id => EV.SCENARIOS[id]?.label || labels[id] || id)
+      .join(', ');
+  }
+
   const routes = {
     dashboard: [
       'EV System Overview',
@@ -299,7 +313,7 @@ const source = new EV.ApiSource();
             </time>
           </td>
           <td>${escape(e.title)}</td>
-          <td>${escape(EV.SCENARIOS[e.scenario].label)}</td>
+          <td>${escape(scenarioLabel(e.scenario))}</td>
           <td>
             <span class="pill ${escape(e.severity)}">
               ${stateLabel(e.severity)}
@@ -354,6 +368,11 @@ const source = new EV.ApiSource();
   }
 
   function updateState(nextState, change) {
+    if (change.type === 'error') {
+      toast('Could not apply scenario: ' + change.error.message);
+      return;
+    }
+
     const previous = state && state.current;
 
     state = nextState;
@@ -389,18 +408,23 @@ const source = new EV.ApiSource();
       }
     });
 
-    const activeMetric = {
-      'under-voltage': 'voltage',
-      'over-current': 'current',
-      'over-temperature': 'temperature'
-    }[d.code];
+    const activeCodes = new Set((d.faults || []).map(fault => fault.code));
+    const activeMetrics = new Set(
+      [...activeCodes].map(code => ({
+        'under-voltage': 'voltage',
+        'low-voltage': 'voltage',
+        'over-voltage': 'voltage',
+        'over-current': 'current',
+        'over-temperature': 'temperature'
+      }[code])).filter(Boolean)
+    );
 
     document.querySelectorAll('.metric-card').forEach(card => {
       const affected =
-        card.dataset.metric === activeMetric ||
+        activeMetrics.has(card.dataset.metric) ||
         (
           card.dataset.metric === 'health' &&
-          d.code !== 'normal'
+          activeCodes.size > 0
         );
 
       card.classList.toggle(
@@ -575,8 +599,13 @@ const source = new EV.ApiSource();
       );
 
       animations.alert();
-      animations.flash(EV.SCENARIOS[r.scenario].systems);
-      twin.select(EV.SCENARIOS[r.scenario].systems[0]);
+      const affectedSystems = Object.keys(d.systems)
+        .filter(system => d.systems[system] !== 'normal');
+
+      animations.flash(affectedSystems);
+      if (affectedSystems.length) {
+        twin.select(affectedSystems[0]);
+      }
     }
 
     initialRender = false;
@@ -921,28 +950,56 @@ const source = new EV.ApiSource();
 
   // Fault scenario selector.
   listen($('fault-button'), 'click', () => {
-    const radio = document.querySelector(
-      'input[name="scenario"][value="' + source.scenario + '"]'
-    );
-
-    if (radio) {
-      radio.checked = true;
-    }
+    const selected = new Set(source.scenarios);
+    document.querySelectorAll('input[name="scenario"]').forEach(input => {
+      input.checked = input.value === 'normal'
+        ? selected.size === 0
+        : selected.has(input.value);
+    });
 
     openDialog($('fault-dialog'));
+  });
+
+  listen($('fault-dialog'), 'change', event => {
+    const input = event.target;
+    if (!input.matches('input[name="scenario"]')) return;
+
+    const normal = $('fault-dialog').querySelector(
+      'input[name="scenario"][value="normal"]'
+    );
+    const selectedFaults = $('fault-dialog').querySelectorAll(
+      'input[name="scenario"]:checked:not([value="normal"])'
+    );
+
+    if (input.value === 'normal' && input.checked) {
+      $('fault-dialog').querySelectorAll(
+        'input[name="scenario"]:not([value="normal"])'
+      ).forEach(fault => {
+        fault.checked = false;
+      });
+    } else if (input.checked) {
+      normal.checked = false;
+    } else if (!selectedFaults.length) {
+      normal.checked = true;
+    }
   });
 
   listen($('apply-scenario'), 'click', event => {
     event.preventDefault();
 
-    const selected = document.querySelector(
+    const selected = Array.from(document.querySelectorAll(
       'input[name="scenario"]:checked'
-    ).value;
+    ))
+      .map(input => input.value)
+      .filter(scenario => scenario !== 'normal');
 
-    source.setScenario(selected);
+    source.setScenarios(selected);
     $('fault-dialog').close('apply');
 
-    toast(EV.SCENARIOS[selected].label + ' applied to the demo feed.');
+    toast(
+      (selected.length ? scenarioLabel(selected.join(',')) : 'Normal operation') +
+      ' requested for the demo feed.'
+    );
   });
 
   // Shared actions.
@@ -1074,4 +1131,3 @@ const source = new EV.ApiSource();
     controller.abort();
   });
 })();
-
