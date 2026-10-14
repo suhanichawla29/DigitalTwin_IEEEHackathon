@@ -4,6 +4,8 @@ import sys
 import time
 import math
 import random
+import threading
+from collections import deque
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
@@ -32,6 +34,8 @@ app.add_middleware(
 
 _start_time = time.time()
 _sample_count = 0
+_can_history = deque(maxlen=500)
+_can_history_lock = threading.RLock()
 
 BASE_VOLTAGE = 400.0
 BASE_CURRENT = 35.0
@@ -221,13 +225,30 @@ def get_readings(
 
         scenario_name = scenario
 
-    _sample_count += 1
-
     # Encode simulated readings into a CAN frame
     frame = make_demo_frame(voltage, current, temperature)
 
     # Decode the frame using the existing DBC decoder
     readings = decode_can_frame(0x100, frame)
+    timestamp = time.time()
+
+    with _can_history_lock:
+        _sample_count += 1
+        sample_index = _sample_count
+        can_message = {
+            "timestamp": timestamp,
+            "sample_index": sample_index,
+            "source_type": "SIMULATED_CAN",
+            "can_id": readings["can_id"],
+            "message_name": readings["message_name"],
+            "source_ecu": readings["source_ecu"],
+            "dlc": readings["dlc"],
+            "data": " ".join(f"{byte:02X}" for byte in frame),
+            "decoded_signals": readings["decoded_signals"],
+            "decode_status": readings["decode_status"],
+            "decode_error": readings["decode_error"],
+        }
+        _can_history.append(can_message)
 
     # Run the existing Python diagnostic rules
     diagnostics = diagnose(
@@ -241,10 +262,66 @@ def get_readings(
         "ecu_status": diagnostics["status"],
         "diagnostics": diagnostics,
         "source": "SIMULATED_CAN",
+        "can_message": can_message,
         "scenario": scenario_name,
         "faults": faults if faults is not None else [],
-        "sample_index": _sample_count,
-        "timestamp": time.time(),
+        "sample_index": sample_index,
+        "timestamp": timestamp,
+    }
+
+
+@app.get("/api/can/messages")
+def get_can_messages(
+    ecu: Annotated[str | None, Query()] = None,
+    can_id: Annotated[str | None, Query()] = None,
+    message_name: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+):
+    """Return a bounded, newest-first view of decoded simulated CAN frames."""
+    requested_id = None
+    if can_id is not None:
+        try:
+            requested_id = int(can_id, 0)
+        except ValueError as error:
+            raise HTTPException(
+                status_code=400,
+                detail="CAN ID must be a decimal or hexadecimal identifier.",
+            ) from error
+
+        if not 0 <= requested_id <= 0x1FFFFFFF:
+            raise HTTPException(
+                status_code=400,
+                detail="CAN ID must be in the valid 29-bit identifier range.",
+            )
+
+    with _can_history_lock:
+        messages = list(reversed(_can_history))
+
+    if ecu:
+        ecu_filter = ecu.strip().casefold()
+        messages = [
+            message for message in messages
+            if (message["source_ecu"] or "").casefold() == ecu_filter
+        ]
+
+    if requested_id is not None:
+        messages = [
+            message for message in messages
+            if int(message["can_id"], 16) == requested_id
+        ]
+
+    if message_name:
+        name_filter = message_name.strip().casefold()
+        messages = [
+            message for message in messages
+            if name_filter in (message["message_name"] or "").casefold()
+        ]
+
+    return {
+        "source": "SIMULATED_CAN",
+        "history_limit": _can_history.maxlen,
+        "count": min(len(messages), limit),
+        "messages": messages[:limit],
     }
 
 

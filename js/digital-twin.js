@@ -29,6 +29,47 @@
       'VCU · illustrative vehicle control unit'
   };
 
+  const COMPONENT_NAMES = {
+    battery: 'Battery Pack',
+    motor: 'Motor Controller',
+    thermal: 'Thermal System',
+    bms: 'Battery Management System',
+    vcu: 'Vehicle Control Unit'
+  };
+
+  const COMPONENT_SIGNALS = {
+    battery: ['Voltage'],
+    motor: ['Current'],
+    thermal: ['Temperature'],
+    bms: ['Voltage', 'Current', 'Temperature'],
+    vcu: []
+  };
+
+  const FAULT_COMPONENTS = {
+    'under-voltage': ['battery', 'bms'],
+    'low-voltage': ['battery', 'bms'],
+    'over-voltage': ['battery', 'bms'],
+    'over-current': ['motor', 'vcu'],
+    'over-temperature': ['thermal', 'bms']
+  };
+
+  const SIGNAL_READINGS = {
+    Voltage: ['voltage', 'V'],
+    Current: ['current', 'A'],
+    Temperature: ['temperature', '°C']
+  };
+
+  const escapeHtml = value => String(value).replace(
+    /[&<>"']/g,
+    char => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[char]
+  );
+
   function wheel(x, y, rx, ry) {
     const spokes = Array.from({ length: 12 }, (_, i) => {
       const a = i * Math.PI / 6;
@@ -738,6 +779,16 @@
 
       stage.innerHTML = illustration();
       this.art = stage.querySelector('.vehicle-art');
+      stage.querySelectorAll('.twin-component').forEach(element => {
+        const id = element.dataset.component;
+        element.setAttribute('tabindex', '0');
+        element.setAttribute('role', 'button');
+        element.setAttribute(
+          'aria-label',
+          'Inspect ' + COMPONENT_NAMES[id]
+        );
+        element.setAttribute('aria-pressed', 'false');
+      });
 
       const options = {
         signal: this.controller.signal
@@ -819,19 +870,19 @@
 
       // Keyboard access.
       stage.addEventListener('keydown', event => {
-        const markerElement = event.target.closest(
-          '.component-marker'
+        const componentElement = event.target.closest(
+          '[data-component]'
         );
 
         if (
-          markerElement &&
+          componentElement &&
           (
             event.key === 'Enter' ||
             event.key === ' '
           )
         ) {
           event.preventDefault();
-          this.select(markerElement.dataset.component);
+          this.select(componentElement.dataset.component);
           return;
         }
 
@@ -921,13 +972,7 @@
         const selected = element.dataset.component === id;
 
         element.classList.toggle('selected', selected);
-
-        if (element.classList.contains('component-marker')) {
-          element.setAttribute(
-            'aria-pressed',
-            String(selected)
-          );
-        }
+        element.setAttribute('aria-pressed', String(selected));
       });
 
       this.describe();
@@ -938,17 +983,107 @@
     }
 
     describe() {
-      if (!this.selected) return;
+      const panel = document.getElementById('component-detail');
+      if (!panel) return;
 
-      const status = this.state
-        ? this.state.current.diagnostics.systems[this.selected]
-        : 'normal';
+      if (!this.selected) {
+        panel.innerHTML = '<p>Select a vehicle component to inspect its live details.</p>';
+        return;
+      }
 
-      document.getElementById('component-detail').textContent =
-        DETAILS[this.selected] +
-        ' · Demo status: ' +
-        status +
-        '.';
+      const id = this.selected;
+      const name = COMPONENT_NAMES[id];
+      const current = this.state && this.state.current;
+      const diagnostics = current && current.diagnostics;
+      const status = diagnostics?.systems?.[id] || 'unknown';
+      const faultList = (diagnostics?.faults || []).filter(fault =>
+        !FAULT_COMPONENTS[fault.code] ||
+        FAULT_COMPONENTS[fault.code].includes(id)
+      );
+      const signals = COMPONENT_SIGNALS[id];
+      const canMessages = this.state?.canMessages || [];
+      const associatedMessages = signals.length
+        ? canMessages.filter(message =>
+            (message.decoded_signals || []).some(signal =>
+              signals.includes(signal.name)
+            )
+          ).slice(-3).reverse()
+        : [];
+      const sender = associatedMessages.find(message => message.source_ecu)
+        ?.source_ecu;
+      const signalRows = Object.entries(SIGNAL_READINGS).map(
+        ([signalName, [readingKey, unit]]) => {
+          const value = current && Number(current[readingKey]);
+          return `
+            <div class="component-telemetry-item">
+              <dt>${signalName}</dt>
+              <dd>${Number.isFinite(value)
+                ? escapeHtml(value.toFixed(1)) + ' ' + unit
+                : 'Unavailable'}</dd>
+            </div>
+          `;
+        }
+      ).join('');
+      const alerts = faultList.length
+        ? `<ul class="component-alert-list">${faultList.map(fault => `
+            <li class="${escapeHtml(fault.severity || 'warning')}">
+              <strong>${escapeHtml(fault.label || fault.code)}</strong>
+              <span>${escapeHtml(fault.description || '')}</span>
+            </li>
+          `).join('')}</ul>`
+        : '<p class="component-empty">No active diagnostic alerts.</p>';
+      const messages = associatedMessages.length
+        ? `<ul class="component-can-list">${associatedMessages.map(message => `
+            <li>
+              <code>${escapeHtml(message.can_id || 'Unknown ID')}</code>
+              <span>${escapeHtml(message.message_name || 'Unnamed DBC message')}</span>
+              <time>${escapeHtml(new Date(
+                Number(message.timestamp) * 1000
+              ).toLocaleTimeString())}</time>
+            </li>
+          `).join('')}</ul>`
+        : `<p class="component-empty">${
+            signals.length
+              ? 'No recent CAN message contains the inferred signal mapping.'
+              : 'The DBC defines no VCU-specific telemetry signal or message.'
+          }</p>`;
+
+      panel.innerHTML = `
+        <div class="component-detail-heading">
+          <div>
+            <span class="eyebrow">COMPONENT / ECU INSPECTOR</span>
+            <h3>${escapeHtml(name)}</h3>
+          </div>
+          <span class="pill ${escapeHtml(status)}">${escapeHtml(status)}</span>
+        </div>
+        <p class="component-description">${escapeHtml(DETAILS[id])}</p>
+        <p class="component-source">
+          DBC sender: <strong>${sender
+            ? escapeHtml(sender)
+            : 'not component-specific'}</strong>
+          · signal association is inferred from signal names.
+        </p>
+        <div class="component-detail-grid">
+          <section>
+            <h4>Latest vehicle telemetry</h4>
+            <p class="component-source">Vehicle-wide values; the DBC does not define per-component measurements.</p>
+            <dl class="component-telemetry">${signalRows}</dl>
+          </section>
+          <section>
+            <h4>Active diagnostic alerts</h4>
+            ${alerts}
+          </section>
+          <section class="component-can-section">
+            <h4>Recent associated CAN messages</h4>
+            ${messages}
+          </section>
+        </div>
+        <p class="component-updated">Last updated: ${
+          current
+            ? escapeHtml(new Date(current.timestamp).toLocaleString())
+            : 'Awaiting telemetry'
+        }</p>
+      `;
     }
 
     update(state) {

@@ -85,6 +85,10 @@
       'Live Data',
       'A single source of simulated vehicle telemetry'
     ],
+    'can-messages': [
+      'CAN Messages',
+      'DBC-decoded simulated bus traffic from current telemetry'
+    ],
     'fault-history': [
       'Fault History',
       'A traceable record of your demo session'
@@ -137,6 +141,9 @@ const source = new EV.ApiSource();
   let historyPage = 0;
   let historyQuery = '';
   let menuOpen = false;
+  let canViewPaused = false;
+  let canClearThrough = 0;
+  let selectedCanSample = null;
 
   const controller = new AbortController();
 
@@ -231,6 +238,120 @@ const source = new EV.ApiSource();
         </td>
       </tr>
     `;
+  }
+
+  function renderCanDetails(message) {
+    $('can-detail-error').hidden = !message || !message.decode_error;
+    $('can-detail-title').textContent = message
+      ? message.message_name || 'Unknown DBC message'
+      : 'Select a CAN message';
+    $('can-detail-status').textContent = message
+      ? message.decode_status
+      : 'Waiting';
+    $('can-detail-status').className = message
+      ? 'pill ' + (message.decode_status === 'decoded' ? 'normal' : 'warning')
+      : 'pill';
+    $('can-detail-time').textContent = message
+      ? fullDate(Number(message.timestamp) * 1000)
+      : '—';
+    $('can-detail-id').textContent = message?.can_id || '—';
+    $('can-detail-ecu').textContent = message?.source_ecu || 'Unknown';
+    $('can-detail-dlc').textContent = message
+      ? String(message.dlc)
+      : '—';
+    $('can-detail-payload').textContent = message?.data || '—';
+
+    const signals = message?.decoded_signals || [];
+    $('can-detail-signals').innerHTML = signals.length
+      ? signals.map(signal => `
+          <tr>
+            <td>${escape(signal.name)}</td>
+            <td>${escape(signal.value)}</td>
+            <td>${escape(signal.unit || '—')}</td>
+          </tr>
+        `).join('')
+      : '<tr><td colspan="3" class="empty">No decoded signals are available.</td></tr>';
+
+    $('can-detail-error').textContent = message?.decode_error || '';
+  }
+
+  function renderCanMessages() {
+    if (!state) return;
+
+    const allMessages = (state.canMessages || [])
+      .filter(message => Number(message.sample_index) > canClearThrough)
+      .slice()
+      .reverse();
+
+    const ecus = Array.from(new Set(
+      allMessages.map(message => message.source_ecu).filter(Boolean)
+    )).sort();
+    const ecuFilter = $('can-ecu-filter');
+    const currentEcu = ecuFilter.value;
+    ecuFilter.innerHTML = '<option value="">All DBC senders</option>' +
+      ecus.map(ecu => `<option value="${escape(ecu)}">${escape(ecu)}</option>`)
+        .join('');
+    if (ecus.includes(currentEcu)) ecuFilter.value = currentEcu;
+
+    const canIdQuery = $('can-id-filter').value.trim().toLowerCase();
+    const messageQuery = $('can-name-filter').value.trim().toLowerCase();
+    const filtered = allMessages.filter(message => {
+      const idMatch = !canIdQuery ||
+        String(message.can_id || '').toLowerCase().includes(canIdQuery);
+      const nameMatch = !messageQuery ||
+        String(message.message_name || '').toLowerCase().includes(messageQuery);
+      const ecuMatch = !ecuFilter.value ||
+        message.source_ecu === ecuFilter.value;
+      return idMatch && nameMatch && ecuMatch;
+    });
+
+    $('can-message-count').textContent =
+      filtered.length + (filtered.length === 1 ? ' frame' : ' frames');
+    $('can-feed-status').textContent = canViewPaused
+      ? 'View paused · simulated CAN capture continues'
+      : 'SIMULATED CAN · live view · no physical hardware';
+
+    $('can-message-table').innerHTML = filtered.length
+      ? filtered.map(message => {
+          const summary = (message.decoded_signals || [])
+            .map(signal =>
+              `${signal.name}: ${signal.value}${signal.unit ? ' ' + signal.unit : ''}`
+            )
+            .join(' · ');
+          return `
+            <tr class="${
+              message.sample_index === selectedCanSample ? 'selected' : ''
+            }">
+              <td>${escape(time(Number(message.timestamp) * 1000))}</td>
+              <td>
+                <button
+                  class="can-select"
+                  type="button"
+                  data-can-sample="${escape(message.sample_index)}"
+                  aria-label="Inspect CAN frame ${escape(message.can_id)}"
+                >${escape(message.can_id)}</button>
+              </td>
+              <td>${escape(message.message_name || 'Unknown')}</td>
+              <td>${escape(message.source_ecu || 'Unknown')}</td>
+              <td>${escape(message.dlc)}</td>
+              <td><code>${escape(message.data || 'Unavailable')}</code></td>
+              <td>${escape(summary || 'Unavailable')}</td>
+              <td><span class="pill ${
+                message.decode_status === 'decoded' ? 'normal' : 'warning'
+              }">${escape(message.decode_status || 'unknown')}</span></td>
+            </tr>
+          `;
+        }).join('')
+      : '<tr><td colspan="8" class="empty">No CAN frames match the current view.</td></tr>';
+
+    let selected = filtered.find(message =>
+      message.sample_index === selectedCanSample
+    );
+    if (!selected && filtered.length) {
+      selected = filtered[0];
+      selectedCanSample = selected.sample_index;
+    }
+    renderCanDetails(selected || null);
   }
 
   function renderHistory() {
@@ -575,6 +696,10 @@ const source = new EV.ApiSource();
     twin.update(state);
     charts.update(state, initialRender);
 
+    if (route === 'can-messages' && !canViewPaused) {
+      renderCanMessages();
+    }
+
     if (route === 'live-data') {
       renderReadings(
         state.readings.slice(-15).reverse(),
@@ -691,6 +816,10 @@ const source = new EV.ApiSource();
         state.readings.slice(-15).reverse(),
         $('live-table')
       );
+    }
+
+    if (state && route === 'can-messages') {
+      renderCanMessages();
     }
 
     if (userInitiated) {
@@ -946,6 +1075,42 @@ const source = new EV.ApiSource();
 
   listen($('time-range'), 'change', event => {
     charts.setRange(event.target.value);
+  });
+
+  listen($('can-pause-button'), 'click', event => {
+    canViewPaused = !canViewPaused;
+    event.currentTarget.textContent = canViewPaused
+      ? 'Resume view'
+      : 'Pause view';
+    if (!canViewPaused) renderCanMessages();
+    else $('can-feed-status').textContent =
+      'View paused · simulated CAN capture continues';
+  });
+
+  listen($('can-clear-button'), 'click', () => {
+    canClearThrough = Math.max(
+      0,
+      ...(state?.canMessages || []).map(message =>
+        Number(message.sample_index) || 0
+      )
+    );
+    selectedCanSample = null;
+    renderCanMessages();
+  });
+
+  ['can-ecu-filter', 'can-id-filter', 'can-name-filter'].forEach(id => {
+    listen($(id), id === 'can-ecu-filter' ? 'change' : 'input', () => {
+      selectedCanSample = null;
+      renderCanMessages();
+    });
+  });
+
+  listen($('can-message-table'), 'click', event => {
+    const button = event.target.closest('[data-can-sample]');
+    if (!button) return;
+
+    selectedCanSample = Number(button.dataset.canSample);
+    renderCanMessages();
   });
 
   // Fault scenario selector.

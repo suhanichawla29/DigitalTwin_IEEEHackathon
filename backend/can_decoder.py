@@ -7,18 +7,44 @@ db = cantools.database.load_file(str(dbc_path))
 
 
 def decode_can_frame(can_id, data):
+    payload = bytes(data)
+
     try:
-        decoded = db.decode_message(can_id, bytes(data))
+        message = db.get_message_by_frame_id(can_id)
+        decoded = db.decode_message(can_id, payload)
 
         return {
-            "can_id": hex(can_id),
+            "can_id": f"0x{can_id:03X}",
+            "message_name": message.name,
+            "source_ecu": ", ".join(message.senders) or None,
+            "dlc": len(payload),
+            "decode_status": "decoded",
+            "decode_error": None,
+            "decoded_signals": [
+                {
+                    "name": signal.name,
+                    "value": decoded[signal.name],
+                    "unit": signal.unit or "",
+                }
+                for signal in message.signals
+                if signal.name in decoded
+            ],
             "voltage": decoded["Voltage"],
             "current": decoded["Current"],
-            "temperature": decoded["Temperature"]
+            "temperature": decoded["Temperature"],
         }
 
     except Exception as error:
-        return {"error": str(error)}
+        return {
+            "can_id": f"0x{can_id:03X}",
+            "message_name": None,
+            "source_ecu": None,
+            "dlc": len(payload),
+            "decode_status": "error",
+            "decode_error": str(error),
+            "decoded_signals": [],
+            "error": str(error),
+        }
 
 
 if __name__ == "__main__":

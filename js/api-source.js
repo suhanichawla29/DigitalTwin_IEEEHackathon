@@ -89,6 +89,7 @@
       this.listeners = new Set();
       this.readings = [];
       this.events = [];
+      this.canMessages = [];
       this.current = null;
       this.scenario = 'normal';
       this.scenarios = [];
@@ -221,11 +222,15 @@
         };
 
         const reading = {
-          timestamp: Date.now(),
+          timestamp: Number.isFinite(Number(raw.timestamp))
+            ? Number(raw.timestamp) * 1000
+            : Date.now(),
           voltage: Number(raw.voltage),
           current: Number(raw.current),
           temperature: Number(raw.temperature),
           health,
+          sampleIndex: raw.sample_index,
+          canMessage: raw.can_message || null,
 
           // Preserve frontend scenario IDs for the dashboard history.
           scenario: requestedScenario,
@@ -245,6 +250,12 @@
 
         this.current = reading;
         this.readings.push(reading);
+        if (reading.canMessage) {
+          this.canMessages.push(reading.canMessage);
+          if (this.canMessages.length > 500) {
+            this.canMessages.shift();
+          }
+        }
 
         if (this.readings.length > 300) {
           this.readings.shift();
@@ -290,6 +301,7 @@
         const state = {
           current: reading,
           readings: [...this.readings],
+          canMessages: [...this.canMessages],
           events: [...this.events],
           running: this.running
         };
@@ -304,6 +316,7 @@
         const state = {
           current: this.current,
           readings: [...this.readings],
+          canMessages: [...this.canMessages],
           events: [...this.events],
           running: this.running
         };
@@ -355,6 +368,7 @@
 
       this.readings = [];
       this.events = [];
+      this.canMessages = [];
       this.current = null;
       this.scenario = 'normal';
       this.scenarios = [];
@@ -416,6 +430,7 @@
       return {
         source: 'Python FastAPI — simulated CAN',
         readings: [...this.readings],
+        canMessages: [...this.canMessages],
         events: [...this.events]
       };
     }

@@ -92,6 +92,16 @@
       </a>
 
       <a
+        href="#can-messages"
+        data-nav="can-messages"
+        class="nav-item"
+      >
+        <i data-lucide="cable"></i>
+        <span>CAN Messages</span>
+        <span class="nav-tag">SIM</span>
+      </a>
+
+      <a
         href="#fault-history"
         data-nav="fault-history"
         class="nav-item"
@@ -454,9 +464,11 @@
           <div
             class="component-detail"
             id="component-detail"
-            role="status"
+            role="region"
+            aria-label="Selected vehicle component details"
+            aria-live="off"
           >
-            Select a component to inspect its demo status.
+            <p>Select a vehicle component to inspect its live details.</p>
           </div>
         </section>
 
@@ -792,6 +804,128 @@
             <tbody id="live-table"></tbody>
           </table>
         </div>
+      </section>
+    </section>
+
+    <!-- CAN bus explorer -->
+    <section
+      class="view"
+      id="view-can-messages"
+      aria-label="CAN message explorer"
+      hidden
+    >
+      <div class="focus-intro">
+        <span class="pill">SIMULATED CAN BUS</span>
+        <p>
+          Frames are encoded from the same telemetry sample shown on the
+          dashboard and decoded with the project's ECU DBC. No physical CAN
+          hardware is connected.
+        </p>
+      </div>
+
+      <section class="panel can-panel">
+        <div class="panel-header can-panel-header">
+          <div>
+            <h2>CAN Messages</h2>
+            <p id="can-feed-status" role="status">Waiting for simulated frames</p>
+          </div>
+          <div class="can-controls">
+            <button class="button secondary" id="can-pause-button" type="button">
+              Pause view
+            </button>
+            <button class="button secondary" id="can-clear-button" type="button">
+              Clear view
+            </button>
+          </div>
+        </div>
+
+        <div class="can-filters" role="group" aria-label="Filter CAN messages">
+          <label>
+            <span>ECU</span>
+            <select id="can-ecu-filter">
+              <option value="">All DBC senders</option>
+            </select>
+          </label>
+          <label>
+            <span>CAN ID</span>
+            <input
+              id="can-id-filter"
+              type="search"
+              placeholder="e.g. 0x100"
+              autocomplete="off"
+            >
+          </label>
+          <label>
+            <span>Message name</span>
+            <input
+              id="can-name-filter"
+              type="search"
+              placeholder="Filter DBC message"
+              autocomplete="off"
+            >
+          </label>
+          <span id="can-message-count" class="subtle-badge">0 frames</span>
+        </div>
+
+        <div class="table-scroll can-table-scroll">
+          <table class="can-table">
+            <caption class="sr-only">Recent simulated CAN frames decoded by the project DBC</caption>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>CAN ID</th>
+                <th>Message</th>
+                <th>Source ECU</th>
+                <th>DLC</th>
+                <th>Raw bytes</th>
+                <th>Decoded signals</th>
+                <th>Decode status</th>
+              </tr>
+            </thead>
+            <tbody id="can-message-table">
+              <tr><td colspan="8" class="empty">Waiting for the first CAN sample.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <section
+          class="can-message-detail"
+          id="can-message-detail"
+          aria-label="Selected CAN message details"
+          aria-live="polite"
+        >
+          <div class="can-message-detail-heading">
+            <div>
+              <span class="eyebrow">SELECTED FRAME</span>
+              <h3 id="can-detail-title">Select a CAN message</h3>
+            </div>
+            <span id="can-detail-status" class="pill">Waiting</span>
+          </div>
+          <div class="can-detail-columns">
+            <section>
+              <h4>Raw frame</h4>
+              <dl class="can-raw-grid">
+                <div><dt>Timestamp</dt><dd id="can-detail-time">—</dd></div>
+                <div><dt>CAN ID</dt><dd id="can-detail-id">—</dd></div>
+                <div><dt>Source ECU</dt><dd id="can-detail-ecu">—</dd></div>
+                <div><dt>DLC</dt><dd id="can-detail-dlc">—</dd></div>
+                <div class="can-payload"><dt>Payload bytes</dt><dd><code id="can-detail-payload">—</code></dd></div>
+              </dl>
+            </section>
+            <section>
+              <h4>DBC decoded signals</h4>
+              <div class="table-scroll">
+                <table class="can-signal-table">
+                  <thead><tr><th>Signal</th><th>Value</th><th>Unit</th></tr></thead>
+                  <tbody id="can-detail-signals">
+                    <tr><td colspan="3" class="empty">No frame selected.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="can-decode-error" id="can-detail-error" hidden></p>
+            </section>
+          </div>
+        </section>
       </section>
     </section>
 

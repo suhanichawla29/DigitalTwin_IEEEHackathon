@@ -897,7 +897,14 @@ p { color: var(--muted); }
   cursor: pointer;
 }
 
-.twin-component.selected { fill-opacity: .4; stroke-width: 2; }
+.twin-component:hover,
+.twin-component:focus-visible,
+.twin-component.selected {
+  fill-opacity: .4;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 4px var(--component-color));
+}
+
 .component-marker { cursor: pointer; outline: none; }
 
 .component-marker rect {
@@ -921,6 +928,7 @@ p { color: var(--muted); }
 }
 
 .component-marker:focus-visible rect,
+.component-marker:hover rect,
 .component-marker.selected rect {
   stroke: #fff;
   stroke-width: 1.6;
@@ -970,6 +978,200 @@ p { color: var(--muted); }
   min-height: 32px;
   color: var(--muted);
 }
+
+.component-detail > p { margin: 0; }
+.component-detail-heading,
+.can-message-detail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.component-detail-heading h3,
+.can-message-detail-heading h3 {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 550;
+}
+
+.component-description,
+.component-source,
+.component-updated,
+.component-empty {
+  margin-top: 8px !important;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.component-source { font-size: 9px; }
+.component-updated { color: var(--faint); font-size: 8px; }
+
+.component-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 14px;
+}
+
+.component-detail-grid h4,
+.can-detail-columns h4 {
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 550;
+}
+
+.component-telemetry {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.component-telemetry-item {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+}
+
+.component-telemetry-item dt { color: var(--faint); font-size: 8px; }
+.component-telemetry-item dd {
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.component-alert-list,
+.component-can-list {
+  display: grid;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.component-alert-list li,
+.component-can-list li {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+
+.component-alert-list strong { color: var(--amber); font-size: 9px; }
+.component-alert-list .critical strong { color: var(--red); }
+.component-alert-list span,
+.component-can-list span,
+.component-can-list time { color: var(--muted); font-size: 8px; }
+.component-can-list li { grid-template-columns: auto 1fr auto; align-items: center; }
+.component-can-list code { color: var(--cyan); font-size: 9px; }
+
+/* CAN message explorer */
+
+.can-panel { padding-bottom: 18px; }
+.can-panel-header { align-items: center; }
+.can-controls { display: flex; gap: 8px; }
+.can-controls .button { padding: 7px 10px; font-size: 9px; }
+
+.can-filters {
+  display: grid;
+  grid-template-columns: minmax(150px, .7fr) minmax(150px, .7fr) minmax(190px, 1fr) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 18px 20px 12px;
+}
+
+.can-filters label { display: grid; gap: 5px; min-width: 0; }
+.can-filters label > span {
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.can-filters input,
+.can-filters select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-deep);
+  color: var(--text);
+  padding: 7px 9px;
+  font-size: 10px;
+}
+
+.can-table-scroll { padding: 0 20px; }
+.can-table { min-width: 1120px; }
+.can-table td { max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
+.can-table code,
+.can-raw-grid code {
+  color: var(--cyan);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.can-select {
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--cyan);
+  padding: 3px 5px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.can-select:hover,
+.can-select:focus-visible {
+  background: #00aaff12;
+  outline: 1px solid var(--cyan);
+}
+
+.can-table tbody tr.selected { background: #00aaff0b; }
+.can-message-detail {
+  margin: 18px 20px 0;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 9px;
+  background: #00aaff04;
+}
+
+.can-detail-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.can-raw-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.can-raw-grid > div {
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+}
+
+.can-raw-grid dt { color: var(--faint); font-size: 8px; }
+.can-raw-grid dd {
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 9px;
+  overflow-wrap: anywhere;
+}
+
+.can-raw-grid .can-payload { grid-column: 1 / -1; }
+.can-payload code { font-size: 12px; letter-spacing: 1px; }
+.can-signal-table { white-space: normal; }
+.can-signal-table th,
+.can-signal-table td { padding: 8px; }
+.can-decode-error { color: var(--red); font-size: 9px; margin-top: 8px; }
 
 .text-button {
   background: transparent;
@@ -1868,6 +2070,7 @@ td.empty { padding: 40px; text-align: center; }
   #twin-slot .twin-content { min-height: 370px; }
   #twin-slot .systems-list { width: 140px; gap: 12px; }
   #twin-slot .system-item strong { font-size: 10px; }
+  .can-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* Mobile */
@@ -2030,6 +2233,15 @@ td.empty { padding: 40px; text-align: center; }
   #twin-slot .system-item small { font-size: 7px; }
   #twin-slot .component-detail { font-size: 10px; padding: 13px 14px; }
   #twin-slot .vehicle-stage { height: 300px; }
+  .component-detail-grid,
+  .can-detail-columns { grid-template-columns: minmax(0, 1fr); }
+  .can-panel-header { align-items: flex-start; flex-direction: column; }
+  .can-controls { width: 100%; }
+  .can-controls .button { flex: 1; }
+  .can-filters { grid-template-columns: minmax(0, 1fr); padding: 15px; }
+  .can-filters > .subtle-badge { justify-self: start; }
+  .can-table-scroll { padding-inline: 10px; }
+  .can-message-detail { margin: 14px 10px 0; padding: 12px; }
   #chart-slot .chart-container { height: 270px; }
   #chart-slot .chart-legend { font-size: 9px; }
   .history-panel > .table-scroll { margin: 0 10px; }
