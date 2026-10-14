@@ -53,7 +53,7 @@ def home():
 @app.get("/api/readings")
 def get_readings():
     # Simulated CAN data for now; later replace with incoming CAN frames.
-    frame = make_demo_frame(400, 35, 45)
+    frame = make_demo_frame(400, 35, 85)
 
     # Decode the simulated CAN frame into sensor readings.
     readings = decode_can_frame(0x100, frame)
