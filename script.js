@@ -95,7 +95,7 @@
     ],
     'predictive-analytics': [
       'Predictive Analytics',
-      'Five-minute ML forecast from synthetic training data, separate from rule alerts'
+      'Independent NASA battery-capacity and SynCAN intrusion models'
     ],
     settings: [
       'Workspace Settings',
@@ -225,7 +225,7 @@ const source = new EV.ApiSource();
         <td>${r.current.toFixed(1)} A</td>
         <td>${r.temperature.toFixed(1)} °C</td>
         <td>${r.health} / 100</td>
-        <td>${readingForecast(r.prediction)}</td>
+        <td>${readingModelStatus(r.datasetModels)}</td>
         <td>
           <span class="pill ${escape(r.diagnostics.severity)}">
             ${escape(r.diagnostics.label)}
@@ -241,21 +241,10 @@ const source = new EV.ApiSource();
     `;
   }
 
-  function readingForecast(prediction) {
-    if (
-      prediction?.model_status === 'ready' &&
-      Number.isFinite(prediction.failure_probability)
-    ) {
-      return (prediction.failure_probability * 100).toFixed(1) + '%';
-    }
-
-    if (prediction?.model_status === 'warming_up') {
-      return 'Warming up (' +
-        prediction.history_count + '/' +
-        prediction.history_required + ')';
-    }
-
-    return 'Unavailable';
+  function readingModelStatus(models) {
+    const nasa = models?.nasa_battery_capacity?.status || 'unavailable';
+    const synCAN = models?.synCAN_intrusion_detection?.status || 'unavailable';
+    return 'NASA: ' + nasa + ' · SynCAN: ' + synCAN;
   }
 
   function renderCanDetails(message) {
@@ -474,7 +463,7 @@ const source = new EV.ApiSource();
           <th>Current</th>
           <th>Temperature</th>
           <th>Health · demo</th>
-          <th>ML probability · 5 min</th>
+          <th>Dataset model status</th>
           <th>Scenario</th>
         </tr>
       `;
@@ -519,43 +508,28 @@ const source = new EV.ApiSource();
 
     const r = state.current;
     const d = r.diagnostics;
-    const prediction = r.prediction || {};
-    const probability = prediction.failure_probability;
-    const modelReady =
-      prediction.model_status === 'ready' &&
-      Number.isFinite(probability);
-    const riskPercentage = modelReady
-      ? Math.max(0, Math.min(100, probability * 100))
-      : 0;
+    const datasetModels = r.datasetModels || {};
+    const nasaModel = datasetModels.nasa_battery_capacity || {};
+    const synCANModel = datasetModels.synCAN_intrusion_detection || {};
 
-    $('risk-value').innerHTML = modelReady
-      ? riskPercentage.toFixed(1) + '<span>%</span>'
-      : '—';
-    $('risk-label').textContent = modelReady
-      ? 'Model estimate'
-      : prediction.model_status === 'warming_up'
-        ? 'Warming up'
-        : 'Model unavailable';
-    $('risk-explanation').textContent = modelReady
-      ? 'Model-estimated probability of a synthetic failure within the next five minutes. The horizon is fixed, not a countdown.'
-      : prediction.model_status === 'warming_up'
-        ? 'Collecting ' + (prediction.history_required || 30) +
-          ' consecutive readings (' + (prediction.history_count || 0) +
-          ' collected).'
-        : 'Train and load the model to enable the five-minute forecast.';
+    $('risk-value').textContent = '—';
+    $('risk-label').textContent = 'Separate data domains';
+    $('risk-explanation').textContent =
+      'Dataset models are not inferred from the live simulated DBC telemetry.';
     $('risk-progress').style.stroke = 'var(--cyan)';
     $('risk-label').style.color = 'var(--cyan)';
     $('risk-ring-container').setAttribute(
       'aria-label',
-      modelReady
-        ? 'Model-estimated failure probability ' +
-          riskPercentage.toFixed(1) +
-          ' percent within the next five minutes; fixed forecast horizon, not a countdown.'
-        : prediction.model_status === 'warming_up'
-          ? 'Machine-learning prediction warming up.'
-          : 'Machine-learning model unavailable.'
+      'NASA battery-capacity model and SynCAN intrusion model status. No shared risk probability.'
     );
-    animations.ring($('risk-progress'), riskPercentage);
+    $('battery-model-status').textContent = nasaModel.status || 'unavailable';
+    $('battery-model-detail').textContent = nasaModel.status === 'ready'
+      ? 'NASA discharge-cycle capacity and capacity-derived SOH estimation is available.'
+      : 'Not trained. Add the documented NASA .mat battery runs and run the NASA training command.';
+    $('synCAN-model-status').textContent = synCANModel.status || 'unavailable';
+    $('synCAN-model-detail').textContent = synCANModel.status === 'ready'
+      ? 'Per-ID anomaly detection is available for SynCAN-format records only.'
+      : 'Not trained. Add the official SynCAN archives and run the SynCAN training command.';
 
     ['voltage', 'current', 'temperature', 'health'].forEach(key => {
       animations.number(

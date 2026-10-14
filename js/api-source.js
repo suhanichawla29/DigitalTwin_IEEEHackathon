@@ -225,13 +225,7 @@
           current: Number(raw.current),
           temperature: Number(raw.temperature),
           health,
-          prediction: raw.prediction || {
-            model_status: 'unavailable',
-            history_count: 0,
-            history_required: 30,
-            failure_probability: null,
-            forecast_horizon_seconds: 300
-          },
+          datasetModels: raw.dataset_models || {},
           sampleIndex: raw.sample_index,
           canMessage: raw.can_message || null,
 

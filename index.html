@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#020817">
   <meta
     name="description"
-    content="SKIT006 — simulated EV digital twin monitoring with synthetic telemetry and an ML forecast trained on synthetic data. No physical CAN connection."
+    content="SKIT006 — simulated EV digital twin with independent NASA battery-capacity and ETAS SynCAN intrusion model integrations. No physical CAN connection."
   >
 
   <title>EV Monitor — Digital Twin & Predictive Diagnostics</title>
@@ -247,7 +247,7 @@
         </span>
 
         <span class="demo-description">
-          Synthetic telemetry and ML forecast trained on synthetic data. No physical ECU connection.
+          Simulated telemetry. NASA and SynCAN models use separate dataset inputs; no physical ECU connection.
         </span>
       </div>
 
@@ -505,17 +505,17 @@
           <div class="risk-heading">
             <h2>
               <i data-lucide="brain-circuit"></i>
-              Predicted Risk
+              Dataset Models
             </h2>
 
-            <span class="subtle-badge">ML · SYNTHETIC DATA</span>
+            <span class="subtle-badge">NASA + SynCAN</span>
           </div>
 
           <div class="risk-body">
             <div
               class="ring risk-ring"
               role="img"
-              aria-label="Machine-learning forecast warming up"
+              aria-label="Dataset models are separate and are not applied to live telemetry"
               id="risk-ring-container"
             >
               <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -534,7 +534,7 @@
                   r="50"
                   pathLength="100"
                   stroke-dasharray="100"
-                  stroke-dashoffset="88"
+                  stroke-dashoffset="100"
                 />
               </svg>
 
@@ -544,21 +544,33 @@
             </div>
 
             <div>
-              <strong id="risk-label" class="risk-label">Warming up</strong>
+              <strong id="risk-label" class="risk-label">Separate data domains</strong>
               <p id="risk-explanation">
-                Collecting recent telemetry for the model forecast.
+                Dataset models are not inferred from the live simulated DBC telemetry.
               </p>
             </div>
           </div>
 
           <p class="risk-disclaimer">
             <i data-lucide="info"></i>
-            Synthetic-data model probability within a fixed five-minute horizon; not a countdown or safety assessment.
+            No combined risk probability: capacity estimation and CAN anomaly detection have different inputs and targets.
           </p>
 
           <div class="diagnostic-bottom">
             <span>Diagnostics source</span>
-            <strong>ML forecast · separate from local diagnostic rules</strong>
+            <strong>Dataset-specific models · separate from rule alerts</strong>
+          </div>
+          <div class="dataset-model-status">
+            <section>
+              <h3>NASA battery aging</h3>
+              <span class="pill" id="battery-model-status">unavailable</span>
+              <p id="battery-model-detail">Checking model availability.</p>
+            </section>
+            <section>
+              <h3>ETAS SynCAN</h3>
+              <span class="pill" id="synCAN-model-status">unavailable</span>
+              <p id="synCAN-model-detail">Checking model availability.</p>
+            </section>
           </div>
         </aside>
 
@@ -796,8 +808,8 @@
                 <th>Current</th>
                 <th>Temperature</th>
                 <th>Health · demo</th>
-                <th>ML probability · 5 min</th>
-                <th>Scenario</th>
+                <th>Dataset model status</th>
+                <th>Diagnostics</th>
               </tr>
             </thead>
 
@@ -1016,16 +1028,17 @@
           <div class="panel-header">
             <div>
               <h2>Transparent diagnostics</h2>
-              <p>Rule-based alerts are separate from the synthetic-data ML forecast</p>
+              <p>Rule-based alerts and independent dataset models use separate inputs</p>
             </div>
 
             <i data-lucide="workflow"></i>
           </div>
 
           <p>
-            Rule-based alerts use the thresholds below. The failure
-            probability above is produced by a separately trained model
-            using synthetic data; it is not a countdown or safety assessment.
+            Rule-based alerts use the thresholds below. NASA capacity
+            estimates require a discharge-cycle record; SynCAN detection
+            requires SynCAN-format ID/signal records. Neither is calculated
+            from the dashboard's simulated DBC telemetry.
           </p>
 
           <div class="table-scroll">
@@ -1079,9 +1092,9 @@
               <strong>Simulated DBC telemetry</strong>
 
               <p>
-                The backend encodes and decodes simulated CAN frames using
-                the project DBC. Predictions are trained and evaluated on
-                synthetic episodes only; no physical vehicle is connected.
+                The dashboard's live CAN traffic remains simulated and is
+                decoded with the project DBC. Dataset-model endpoints are
+                separate; no physical vehicle is connected.
               </p>
             </div>
           </div>

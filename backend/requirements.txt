@@ -4,3 +4,4 @@ cantools
 numpy
 scikit-learn
 joblib
+scipy

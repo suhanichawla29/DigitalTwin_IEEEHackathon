@@ -16,6 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from can_decoder import decode_can_frame
 from diagnostics import diagnose
 from predictor import FailurePredictor, HORIZON_SECONDS
+from battery_predictor import BatteryCapacityPredictor
+from synCAN_predictor import SynCANPredictor
 
 app = FastAPI(title="EV Digital Twin API")
 
@@ -137,6 +139,8 @@ class SimulationState:
 
 simulation = SimulationState()
 predictor = FailurePredictor()
+battery_capacity_predictor = BatteryCapacityPredictor()
+synCAN_predictor = SynCANPredictor()
 _simulation_lock = threading.RLock()
 _can_history = deque(maxlen=CAN_HISTORY_LIMIT)
 _sample_count = 0
@@ -241,6 +245,7 @@ def get_readings(
             temperature=readings["temperature"],
         )
         prediction = predictor.add_reading(readings)
+        dataset_models = get_dataset_model_status()
         can_message = {
             "timestamp": timestamp,
             "sample_index": sample_index,
@@ -261,6 +266,7 @@ def get_readings(
         "ecu_status": diagnostics["status"],
         "diagnostics": diagnostics,
         "prediction": prediction,
+        "dataset_models": dataset_models,
         "model_status": prediction["model_status"],
         "history_count": prediction["history_count"],
         "failure_probability": prediction["failure_probability"],
@@ -273,6 +279,67 @@ def get_readings(
         "sample_index": sample_index,
         "timestamp": timestamp,
     }
+
+
+def get_dataset_model_status():
+    return {
+        "nasa_battery_capacity": battery_capacity_predictor.status(),
+        "synCAN_intrusion_detection": synCAN_predictor.status(),
+    }
+
+
+@app.get("/api/models")
+def get_models():
+    """Report independent dataset-model readiness without fabricating predictions."""
+    return {
+        "dataset_models": get_dataset_model_status(),
+        "legacy_synthetic_failure_model": {
+            "status": "ready" if predictor.model is not None else "unavailable",
+            "purpose": "synthetic scenario demonstration only",
+            "used_for_dataset_models": False,
+        },
+    }
+
+
+@app.post("/api/battery/capacity")
+def estimate_battery_capacity(payload: dict):
+    """Estimate capacity from a complete NASA-shaped discharge-cycle payload."""
+    if battery_capacity_predictor.model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=battery_capacity_predictor.error or
+            "NASA battery capacity model is unavailable.",
+        )
+    cycle = payload.get("cycle")
+    data = cycle.get("data") if isinstance(cycle, dict) else None
+    if not isinstance(data, dict):
+        raise HTTPException(
+            status_code=400,
+            detail="Expected cycle.data with NASA discharge measurement arrays.",
+        )
+    try:
+        result = battery_capacity_predictor.estimate(data)
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {
+        **result,
+        "battery_id": payload.get("battery_id"),
+        "cycle_index": payload.get("cycle_index"),
+    }
+
+
+@app.post("/api/can/anomaly")
+def detect_synCAN_anomaly(record: dict):
+    """Score one SynCAN-format row; this is not a decoded project DBC frame."""
+    if not synCAN_predictor.models:
+        raise HTTPException(
+            status_code=503,
+            detail=synCAN_predictor.error or "SynCAN model is unavailable.",
+        )
+    try:
+        return synCAN_predictor.score(record)
+    except (KeyError, TypeError, ValueError) as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @app.get("/api/can/messages")
@@ -348,9 +415,12 @@ def get_scenarios():
 def health():
     return {
         "status": "ok",
-        "model_status": "ready" if predictor.model is not None else "unavailable",
-        "model": predictor.metadata,
-        "model_error": predictor.model_error,
+        "dataset_models": get_dataset_model_status(),
+        "legacy_synthetic_failure_model": {
+            "status": "ready" if predictor.model is not None else "unavailable",
+            "metadata": predictor.metadata,
+            "error": predictor.model_error,
+        },
         "simulation_speed": SIMULATION_SPEED,
         "forecast_horizon_seconds": HORIZON_SECONDS,
     }
@@ -363,6 +433,7 @@ def reset_simulation():
     with _simulation_lock:
         simulation.reset()
         predictor.reset()
+        synCAN_predictor.reset()
         _can_history.clear()
         _sample_count = 0
     return {
