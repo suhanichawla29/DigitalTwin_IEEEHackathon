@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import threading
+import pickle
 
 import joblib
 import numpy as np
@@ -43,6 +44,7 @@ class BatteryCapacityPredictor:
             OSError,
             EOFError,
             ImportError,
+            pickle.UnpicklingError,
             KeyError,
             TypeError,
             ValueError,

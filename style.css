@@ -1245,6 +1245,57 @@ p { color: var(--muted); }
 
 .diagnostic-bottom strong { color: var(--muted); font-weight: 400; }
 
+.dataset-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.dataset-heading h2 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.dataset-heading h2 svg { width: 14px; height: 14px; color: var(--cyan); }
+
+.dataset-model-status {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 18px 10px;
+}
+
+.dataset-model-status section {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel-deep);
+}
+
+.dataset-model-status h3 {
+  margin-bottom: 7px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 550;
+}
+
+.dataset-model-status p,
+.dataset-model-note {
+  color: var(--faint);
+  font-size: 8px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.dataset-model-status p { margin-top: 7px; white-space: pre-line; }
+.dataset-model-note { margin: 0 18px 12px; }
+
 /* Sensor charts */
 
 .sensor-panel { grid-area: sensor; }
@@ -1995,6 +2046,7 @@ td.empty { padding: 40px; text-align: center; }
 /* Mobile */
 
 @media (max-width: 600px) {
+  .dataset-model-status { grid-template-columns: 1fr; }
   .main { padding: 18px 14px 0; }
   .topbar { gap: 8px; align-items: flex-start; }
   .heading-group { gap: 6px; }

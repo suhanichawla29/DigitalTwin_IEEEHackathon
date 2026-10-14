@@ -87,7 +87,6 @@
     return data;
   }
 
-<<<<<<< HEAD
   async function resetEpisode() {
     const response = await fetch(RESET_URL, { method: 'POST' });
     if (response.ok) return;
@@ -106,7 +105,8 @@
     }
 
     throw new Error(message);
-=======
+  }
+
   /*
    * Map the backend's demo fault codes onto the five monitored systems so the
    * dashboard and the 3D digital twin stay in sync with the actual API result.
@@ -128,13 +128,6 @@
     'over-voltage': [
       { id: 'battery', severity: 'warning' }
     ]
-  };
-
-  // Illustrative demo scores; the backend reports faults, not a health model.
-  const SCORE_BY_SEVERITY = {
-    normal: { risk: 8, health: 92 },
-    warning: { risk: 64, health: 68 },
-    critical: { risk: 86, health: 48 }
   };
 
   const RANK = { normal: 0, warning: 1, critical: 2 };
@@ -171,7 +164,6 @@
     });
 
     const primary = faults[0];
-    const scores = SCORE_BY_SEVERITY[severity];
 
     return {
       code: primary ? primary.code : 'normal',
@@ -182,11 +174,9 @@
             .map(fault => fault.description || fault.label)
             .join(' ')
         : 'No demo fault rules were triggered by the Python API.',
-      risk: scores.risk,
-      health: scores.health,
+      faults,
       systems
     };
->>>>>>> 63037e5db859ad482ef4328ca07a6f78a712e913
   }
 
   class ApiSource {
@@ -348,6 +338,7 @@
           temperature: Number(raw.temperature),
           health,
           prediction,
+          datasetModels: raw.dataset_models || {},
 
           // Preserve frontend scenario IDs for the dashboard history.
           scenario: requestedScenario,

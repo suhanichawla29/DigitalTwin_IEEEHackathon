@@ -91,7 +91,7 @@
     ],
     'predictive-analytics': [
       'Predictive Analytics',
-      'Synthetic-model failure probability and separate rule diagnostics'
+      'Independent synthetic, NASA battery, and SynCAN model outputs'
     ],
     settings: [
       'Workspace Settings',
@@ -387,8 +387,61 @@ const source = new EV.ApiSource();
       .join('');
   }
 
+  function updateDatasetModelCard(prefix, model) {
+    const status = model.status || 'unavailable';
+    const labels = {
+      ready: 'Ready',
+      missing_dataset: 'Missing dataset',
+      not_trained: 'Not trained',
+      load_error: 'Load error',
+      unavailable: 'Unavailable'
+    };
+    const badge = $(prefix + '-model-status');
+    badge.textContent = labels[status] || status;
+    badge.className = 'pill ' + (
+      status === 'ready'
+        ? 'normal'
+        : status === 'load_error' ? 'critical' : 'warning'
+    );
+
+    const dataset = model.dataset || {};
+    const detail = status === 'ready'
+      ? [
+          'Loaded from ' + (model.artifact_path || 'model artifact'),
+          model.metadata && model.metadata.discharge_cycles
+            ? model.metadata.discharge_cycles + ' discharge cycles; evaluation metrics are available.'
+            : '',
+          model.metadata && model.metadata.evaluation
+            ? 'Evaluation: ' + JSON.stringify(model.metadata.evaluation)
+            : ''
+        ].filter(Boolean).join('\n')
+      : [
+          model.error || 'FastAPI has not returned model status.',
+          dataset.directory ? 'Data folder: ' + dataset.directory : '',
+          dataset.missing_files && dataset.missing_files.length
+            ? 'Missing files: ' + dataset.missing_files.join(', ')
+            : '',
+          model.download_url ? 'Official source: ' + model.download_url : '',
+          model.training_command
+            ? 'Training command: ' + model.training_command
+            : '',
+          model.artifact_path ? 'Expected model: ' + model.artifact_path : ''
+        ].filter(Boolean).join('\n');
+    $(prefix + '-model-detail').textContent = detail;
+  }
+
+  function showDatasetModelError(error) {
+    ['nasa', 'syncan'].forEach(prefix => {
+      updateDatasetModelCard(prefix, {
+        status: 'unavailable',
+        error: 'FastAPI model status unavailable: ' + error.message
+      });
+    });
+  }
+
   function updateState(nextState, change) {
     if (change.type === 'error') {
+      showDatasetModelError(change.error);
       toast('Could not apply scenario: ' + change.error.message);
       return;
     }
@@ -399,6 +452,15 @@ const source = new EV.ApiSource();
 
     const r = state.current;
     const d = r.diagnostics;
+    const datasetModels = r.datasetModels || {};
+    updateDatasetModelCard(
+      'nasa',
+      datasetModels.nasa_battery_capacity || {}
+    );
+    updateDatasetModelCard(
+      'syncan',
+      datasetModels.syncan_intrusion_detection || {}
+    );
 
     ['voltage', 'current', 'temperature', 'health'].forEach(key => {
       if (Number.isFinite(r[key])) {

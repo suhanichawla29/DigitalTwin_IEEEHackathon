@@ -580,6 +580,27 @@
             Trained on synthetic episodes only; not validated for real vehicles or safety decisions.
           </p>
 
+          <div class="dataset-heading">
+            <h2><i data-lucide="database"></i> Dataset Models</h2>
+            <span class="subtle-badge">SEPARATE INPUTS</span>
+          </div>
+          <div class="dataset-model-status">
+            <section aria-live="polite">
+              <h3>NASA battery aging</h3>
+              <span class="pill warning" id="nasa-model-status">Checking</span>
+              <p id="nasa-model-detail">Waiting for FastAPI model status.</p>
+            </section>
+            <section aria-live="polite">
+              <h3>ETAS SynCAN</h3>
+              <span class="pill warning" id="syncan-model-status">Checking</span>
+              <p id="syncan-model-detail">Waiting for FastAPI model status.</p>
+            </section>
+          </div>
+          <p class="dataset-model-note">
+            NASA capacity estimates and SynCAN anomaly detection use their
+            own dataset formats; neither is a combined live-failure probability.
+          </p>
+
           <div class="diagnostic-bottom">
             <span>Diagnostics source</span>
             <strong>Python rule-based diagnostics</strong>

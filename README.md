@@ -35,3 +35,26 @@ Simulation degradation speed can be adjusted for the API process with the
 `1.0` accelerate degradation and values between `0` and `1.0` slow it down.
 For example, set `$env:EV_SIMULATION_SPEED = "1.0"` in PowerShell before
 starting Uvicorn. Restart the API after changing the setting.
+
+## Separate NASA and SynCAN models
+
+The NASA model estimates discharge capacity and capacity-derived battery SOH
+from complete NASA discharge-cycle measurement arrays. The SynCAN model
+performs per-ID anomaly detection on SynCAN message records. They have distinct
+inputs and outputs; neither is merged with the dashboard's synthetic
+five-minute failure predictor or project DBC telemetry.
+
+See [backend/data/README.md](backend/data/README.md) for the official dataset
+schemas, Windows data-folder structure, download caveats, and licensing.
+After placing the source datasets, train from the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe backend\training\train_nasa_model.py
+.\.venv\Scripts\python.exe backend\training\train_syncan_model.py
+```
+
+The artifacts are `backend\models\nasa_capacity.joblib` and
+`backend\models\synCAN_isolation_forest.joblib`. Restart FastAPI after
+training. `GET /api/models` reports each model's dataset presence, artifact
+load status, and metadata. Dataset-specific inference endpoints are
+`POST /api/battery/capacity` and `POST /api/can/anomaly`.

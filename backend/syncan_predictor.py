@@ -1,6 +1,7 @@
 """Inference and feature validation for per-ID SynCAN anomaly models."""
 
 from pathlib import Path
+import pickle
 import threading
 
 import joblib
@@ -90,6 +91,7 @@ class SynCANPredictor:
             OSError,
             EOFError,
             ImportError,
+            pickle.UnpicklingError,
             KeyError,
             TypeError,
             ValueError,

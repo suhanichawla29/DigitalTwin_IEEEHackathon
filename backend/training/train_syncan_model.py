@@ -10,7 +10,6 @@ import zipfile
 import joblib
 import numpy as np
 from sklearn.ensemble import IsolationForest
-from sklearn.metrics import confusion_matrix, f1_score, precision_score, recall_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -131,19 +130,31 @@ def _training_samples(paths, limit, seed):
 
 
 def _metrics(counts):
-    true = []
-    predicted = []
-    for label, results in counts.items():
-        true.extend([label] * results["rows"])
-        predicted.extend([1] * results["positive"] + [0] * results["negative"])
-    matrix = confusion_matrix(true, predicted, labels=[0, 1])
+    false_positives = counts[0]["positive"]
+    true_positives = counts[1]["positive"]
+    missed_intrusions = counts[1]["negative"]
+    true_negatives = counts[0]["negative"]
+    precision_denominator = true_positives + false_positives
+    recall_denominator = true_positives + missed_intrusions
+    precision = (
+        true_positives / precision_denominator
+        if precision_denominator else 0.0
+    )
+    recall = (
+        true_positives / recall_denominator
+        if recall_denominator else 0.0
+    )
+    f1 = (
+        2 * precision * recall / (precision + recall)
+        if precision + recall else 0.0
+    )
     return {
-        "rows_evaluated": len(true),
-        "precision": float(precision_score(true, predicted, zero_division=0)),
-        "recall": float(recall_score(true, predicted, zero_division=0)),
-        "f1": float(f1_score(true, predicted, zero_division=0)),
-        "false_positives": int(matrix[0, 1]),
-        "missed_intrusions": int(matrix[1, 0]),
+        "rows_evaluated": sum(count["rows"] for count in counts.values()),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+        "false_positives": int(false_positives),
+        "missed_intrusions": int(missed_intrusions),
     }
 
 

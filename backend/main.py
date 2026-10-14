@@ -21,7 +21,7 @@ from predictor import (
     HORIZON_SECONDS,
 )
 from battery_predictor import BatteryCapacityPredictor
-from syncan_predictor import SIGNAL_COUNTS, SynCANPredictor
+from syncan_predictor import SynCANPredictor
 from training.train_nasa_model import DATA_DIR as NASA_DATA_DIR
 from training.train_syncan_model import (
     DATA_DIR as SYNCAN_DATA_DIR,
@@ -372,15 +372,16 @@ def _model_readiness(predictor_instance, *, dataset_status, minimum_inputs,
     model_status = predictor_instance.status()
     artifact = predictor_instance.model_path
     load_error = model_status["load_error"]
+    is_loaded = (
+        predictor_instance.model is not None
+        if isinstance(predictor_instance, BatteryCapacityPredictor)
+        else bool(predictor_instance.models)
+    )
 
     if load_error:
         status = "load_error"
         message = load_error
-    elif (
-        predictor_instance.model is not None
-        if isinstance(predictor_instance, BatteryCapacityPredictor)
-        else bool(predictor_instance.models)
-    ):
+    elif is_loaded:
         status = "ready"
         message = "Model artifact loaded and verified."
     elif dataset_status["available_count"] < minimum_inputs:
