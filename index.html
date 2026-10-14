@@ -35,6 +35,7 @@
  <script defer src="js/simulator.js"></script>
 <script defer src="js/api-source.js"></script>
 <script defer src="js/charts.js"></script>
+<script defer src="js/forecast-charts.js"></script>
 <script defer src="js/digital-twin.js"></script>
 <script defer src="js/animations.js"></script>
 <script defer src="script.js"></script>
@@ -801,6 +802,106 @@
           </button>
         </section>
       </div>
+
+      <section
+        class="panel multilevel-forecast"
+        id="multilevel-forecast"
+        aria-labelledby="multilevel-forecast-title"
+      >
+        <div class="panel-header multilevel-forecast-header">
+          <div>
+            <h2 id="multilevel-forecast-title">Multi-Level Forecasting</h2>
+            <p>Recent-trend projections from persisted, DBC-decoded simulator telemetry</p>
+          </div>
+          <span id="forecast-overall-status" class="pill warning" aria-live="polite">
+            Collecting data
+          </span>
+        </div>
+
+        <div class="forecast-meta" aria-live="polite">
+          <span id="forecast-history-count">0 readings · minimum 15</span>
+          <span id="forecast-last-updated">No persisted readings yet</span>
+        </div>
+
+        <div class="forecast-grid">
+          <article class="forecast-card">
+            <div class="forecast-card-heading">
+              <div>
+                <h3>Short-term</h3>
+                <p>Next 30 seconds · recent linear trend</p>
+              </div>
+              <span id="forecast-short-status" class="pill warning">Collecting data</span>
+            </div>
+            <div class="forecast-values">
+              <div>
+                <span>Voltage · actual → forecast</span>
+                <strong id="forecast-short-voltage">—</strong>
+              </div>
+              <div>
+                <span>Temperature · actual → forecast</span>
+                <strong id="forecast-short-temperature">—</strong>
+              </div>
+            </div>
+            <p id="forecast-short-warning" class="forecast-warning" aria-live="polite">
+              Collecting telemetry for the short-term forecast.
+            </p>
+            <div class="forecast-chart-wrap">
+              <canvas
+                id="forecast-short-chart"
+                role="img"
+                aria-label="Actual and 30-second projected voltage and temperature trends"
+              ></canvas>
+              <p id="forecast-short-chart-fallback" class="forecast-chart-fallback" hidden>
+                Forecast chart unavailable; numeric status remains available.
+              </p>
+            </div>
+            <p id="forecast-short-comparison" class="forecast-comparison">
+              Chronological comparison collecting enough data.
+            </p>
+          </article>
+
+          <article class="forecast-card">
+            <div class="forecast-card-heading">
+              <div>
+                <h3>Medium-term</h3>
+                <p>Next 5 minutes · recent linear trend</p>
+              </div>
+              <span id="forecast-medium-status" class="pill warning">Collecting data</span>
+            </div>
+            <div class="forecast-values">
+              <div>
+                <span>Voltage · actual → forecast</span>
+                <strong id="forecast-medium-voltage">—</strong>
+              </div>
+              <div>
+                <span>Temperature · actual → forecast</span>
+                <strong id="forecast-medium-temperature">—</strong>
+              </div>
+            </div>
+            <p id="forecast-medium-warning" class="forecast-warning" aria-live="polite">
+              Collecting telemetry for the medium-term forecast.
+            </p>
+            <div class="forecast-chart-wrap">
+              <canvas
+                id="forecast-medium-chart"
+                role="img"
+                aria-label="Actual and five-minute projected voltage and temperature trends"
+              ></canvas>
+              <p id="forecast-medium-chart-fallback" class="forecast-chart-fallback" hidden>
+                Forecast chart unavailable; numeric status remains available.
+              </p>
+            </div>
+            <p id="forecast-medium-comparison" class="forecast-comparison">
+              Chronological comparison collecting enough data.
+            </p>
+          </article>
+
+        </div>
+        <p class="forecast-disclaimer">
+          Forecasts are trend extrapolations from simulated telemetry, not trained
+          vehicle predictions. CAN and sensor values are simulated.
+        </p>
+      </section>
 
       <section
         class="panel can-history-panel"

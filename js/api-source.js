@@ -347,6 +347,7 @@
           temperature: Number(raw.temperature),
           health,
           prediction,
+          forecasts: raw.forecasts || null,
           datasetModels: raw.dataset_models || {},
           canMessages: Array.isArray(raw.can_messages)
             ? raw.can_messages

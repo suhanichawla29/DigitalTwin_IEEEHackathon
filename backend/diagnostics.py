@@ -1,10 +1,16 @@
 
+LOW_VOLTAGE_WARNING_V = 300.0
+HIGH_VOLTAGE_WARNING_V = 430.0
+HIGH_TEMPERATURE_WARNING_C = 80.0
+HIGH_CURRENT_WARNING_A = 100.0
+
+
 def diagnose(voltage, current, temperature):
     """Detect faults using illustrative prototype thresholds."""
 
     faults = []
 
-    if temperature > 80:
+    if temperature > HIGH_TEMPERATURE_WARNING_C:
         faults.append({
             "code": "over-temperature",
             "label": "High Temperature",
@@ -12,7 +18,7 @@ def diagnose(voltage, current, temperature):
             "description": "Temperature exceeds the demo limit."
         })
 
-    if current > 100:
+    if current > HIGH_CURRENT_WARNING_A:
         faults.append({
             "code": "over-current",
             "label": "Excessive Current",
@@ -20,7 +26,7 @@ def diagnose(voltage, current, temperature):
             "description": "Current exceeds the demo limit."
         })
 
-    if voltage < 300:
+    if voltage < LOW_VOLTAGE_WARNING_V:
         faults.append({
             "code": "under-voltage",
             "label": "Low Voltage",
@@ -28,7 +34,7 @@ def diagnose(voltage, current, temperature):
             "description": "Voltage is below the demo limit."
         })
 
-    if voltage > 430:
+    if voltage > HIGH_VOLTAGE_WARNING_V:
         faults.append({
             "code": "over-voltage",
             "label": "High Voltage",
@@ -48,4 +54,3 @@ def diagnose(voltage, current, temperature):
         "faults": faults,
         "message": f"{len(faults)} fault(s) detected."
     }
-

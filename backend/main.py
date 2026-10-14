@@ -6,6 +6,7 @@ import random
 import threading
 import math
 import os
+import uuid
 from collections import deque
 from typing import Annotated
 
@@ -24,6 +25,13 @@ from predictor import (
 from battery_predictor import BatteryCapacityPredictor
 from syncan_predictor import SynCANPredictor
 from ev_simulator_predictor import EVSimulatorAnomalyPredictor
+from telemetry_store import DATABASE_PATH, TelemetryStore
+from forecasting import (
+    MAX_HISTORY as FORECAST_MAX_HISTORY,
+    MIN_HISTORY as FORECAST_MIN_HISTORY,
+    build_forecast_status,
+    build_multilevel_forecast,
+)
 from training.train_nasa_model import DATA_DIR as NASA_DATA_DIR
 from training.train_syncan_model import (
     DATA_DIR as SYNCAN_DATA_DIR,
@@ -47,6 +55,7 @@ app.add_middleware(
 # --------------------------------------------------
 
 _sample_count = 0
+_episode_id = uuid.uuid4().hex
 CAN_HISTORY_LIMIT = 100
 _can_messages = deque(maxlen=CAN_HISTORY_LIMIT)
 SIMULATION_SPEED = float(os.environ.get("EV_SIMULATION_SPEED", "1.0"))
@@ -220,6 +229,7 @@ predictor = FailurePredictor()
 battery_capacity_predictor = BatteryCapacityPredictor()
 syncan_predictor = SynCANPredictor()
 ev_simulator_predictor = EVSimulatorAnomalyPredictor()
+telemetry_store = TelemetryStore(DATABASE_PATH)
 
 
 # --------------------------------------------------
@@ -339,6 +349,7 @@ def get_readings(
                 + readings.get("error", "unknown decoder error")
             )
         sample_timestamp = time.time()
+        sample_id = f"{_episode_id}:{_sample_count}"
         if (
             ev_simulator_predictor.model is None
             and ev_simulator_predictor.error is None
@@ -347,6 +358,7 @@ def get_readings(
         syncan_available = bool(syncan_predictor.models)
         can_message = {
             "timestamp": sample_timestamp,
+            "sample_id": sample_id,
             **{
                 key: readings[key]
                 for key in (
@@ -382,6 +394,18 @@ def get_readings(
             ),
         }
         _can_messages.append(can_message)
+        telemetry_store.insert_reading(
+            sample_id=sample_id,
+            episode_id=_episode_id,
+            sample_index=_sample_count,
+            timestamp=sample_timestamp,
+            voltage=readings["voltage"],
+            current=readings["current"],
+            temperature=readings["temperature"],
+            source="simulator",
+            can_id=readings["can_id"],
+            decoded_signals=readings["decoded_signals"],
+        )
         diagnostics = diagnose(
             voltage=readings["voltage"],
             current=readings["current"],
@@ -389,6 +413,19 @@ def get_readings(
         )
         prediction = predictor.add_reading(readings)
 
+    dataset_models = get_dataset_model_status()
+    recent_telemetry = telemetry_store.recent_readings(
+        limit=FORECAST_MAX_HISTORY,
+        before=sample_timestamp,
+    )
+    total_telemetry_count = telemetry_store.count(before=sample_timestamp)
+    forecasts = build_multilevel_forecast(
+        recent_telemetry,
+        as_of=sample_timestamp,
+        minimum_history=FORECAST_MIN_HISTORY,
+        nasa_model_status=dataset_models["nasa_battery_capacity"],
+        total_history_count=total_telemetry_count,
+    )
     return {
         **readings,
         "ecu_status": diagnostics["status"],
@@ -396,14 +433,86 @@ def get_readings(
         "source": "SIMULATED_CAN",
         "scenario": selected_scenario,
         "faults": faults if faults is not None else [],
+        "sample_id": sample_id,
         "sample_index": _sample_count,
         "timestamp": sample_timestamp,
         "can_message": can_message,
         "can_messages": list(_can_messages),
         "prediction": prediction,
-        "dataset_models": get_dataset_model_status(),
+        "dataset_models": dataset_models,
         "live_can_detector": ev_simulator_detector_status(),
+        "forecasts": forecasts,
     }
+
+
+@app.get("/api/telemetry/history")
+def get_telemetry_history(
+    limit: Annotated[int, Query(ge=1, le=FORECAST_MAX_HISTORY)] = 100,
+    before: Annotated[float | None, Query()] = None,
+):
+    """Return recent persisted simulator readings in chronological order."""
+    if before is not None and not math.isfinite(before):
+        raise HTTPException(
+            status_code=400,
+            detail="before must be a finite Unix timestamp in seconds.",
+        )
+    try:
+        readings = telemetry_store.recent_readings(limit=limit, before=before)
+        count = telemetry_store.count(before=before)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return {
+        "status": "ok",
+        "database": str(DATABASE_PATH),
+        "source": "simulator",
+        "count": count,
+        "returned": len(readings),
+        "limit": limit,
+        "before": before,
+        "readings": readings,
+    }
+
+
+def _current_forecast():
+    as_of = time.time()
+    readings = telemetry_store.recent_readings(
+        limit=FORECAST_MAX_HISTORY,
+        before=as_of,
+    )
+    total_history_count = telemetry_store.count(before=as_of)
+    dataset_models = get_dataset_model_status()
+    return (
+        readings,
+        as_of,
+        dataset_models["nasa_battery_capacity"],
+        total_history_count,
+    )
+
+
+@app.get("/api/forecast/multilevel")
+def get_multilevel_forecast():
+    """Return current 30-second, five-minute, and supported long-term status."""
+    readings, as_of, nasa_status, total_history_count = _current_forecast()
+    return build_multilevel_forecast(
+        readings,
+        as_of=as_of,
+        minimum_history=FORECAST_MIN_HISTORY,
+        nasa_model_status=nasa_status,
+        total_history_count=total_history_count,
+    )
+
+
+@app.get("/api/forecast/status")
+def get_forecast_status():
+    """Return readiness and sample requirements for each forecast horizon."""
+    readings, as_of, nasa_status, total_history_count = _current_forecast()
+    return build_forecast_status(
+        readings,
+        as_of=as_of,
+        minimum_history=FORECAST_MIN_HISTORY,
+        nasa_model_status=nasa_status,
+        total_history_count=total_history_count,
+    )
 
 
 @app.get("/api/can/messages")
@@ -670,7 +779,7 @@ def health():
 @app.post("/api/reset")
 def reset_simulation():
     """Start a new independent episode and clear the predictor's rolling window."""
-    global _sample_count
+    global _sample_count, _episode_id
 
     with _episode_lock:
         simulation.reset()
@@ -678,6 +787,7 @@ def reset_simulation():
         ev_simulator_predictor.reset()
         _can_messages.clear()
         _sample_count = 0
+        _episode_id = uuid.uuid4().hex
 
     return {
         "status": "reset",

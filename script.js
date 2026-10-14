@@ -114,6 +114,9 @@ const source = new EV.ApiSource();
     $('chart-fallback'),
     () => animations.allowed()
   );
+  const forecastCharts = new EV.ForecastCharts(
+    () => animations.allowed()
+  );
 
   const twin = new EV.DigitalTwin(
     $('vehicle-stage'),
@@ -600,6 +603,102 @@ const source = new EV.ApiSource();
     });
   }
 
+  function updateForecastCard(prefix, horizon) {
+    const status = horizon && horizon.status === 'ready'
+      ? 'Ready'
+      : 'Collecting data';
+    const statusElement = $('forecast-' + prefix + '-status');
+    statusElement.textContent = status;
+    statusElement.className = 'pill ' + (
+      status === 'Ready' ? 'normal' : 'warning'
+    );
+
+    ['voltage', 'temperature'].forEach(signal => {
+      const result = horizon && horizon.signals
+        ? horizon.signals[signal]
+        : null;
+      const actual = result && Number.isFinite(result.actual)
+        ? result.actual
+        : null;
+      const predicted = result && Number.isFinite(result.predicted)
+        ? result.predicted
+        : null;
+      const unit = signal === 'voltage' ? 'V' : '°C';
+      $(`forecast-${prefix}-${signal}`).textContent =
+        (actual === null ? '—' : actual.toFixed(1) + ' ' + unit) +
+        ' → ' +
+        (predicted === null ? '—' : predicted.toFixed(1) + ' ' + unit);
+    });
+
+    const warningMessages = [];
+    ['voltage', 'temperature'].forEach(signal => {
+      const result = horizon && horizon.signals
+        ? horizon.signals[signal]
+        : null;
+      (result && result.warning_assessment || []).forEach(warning => {
+        warningMessages.push(warning.message);
+      });
+    });
+    const warningElement = $('forecast-' + prefix + '-warning');
+    warningElement.textContent = warningMessages.length
+      ? warningMessages.join(' ')
+      : status === 'Ready'
+        ? 'Recent trend does not project a warning-limit crossing within this horizon.'
+        : 'Collecting telemetry for this forecast horizon.';
+    warningElement.classList.toggle(
+      'is-warning',
+      warningMessages.length > 0
+    );
+
+    const comparisons = horizon && horizon.chronological_comparison || {};
+    const comparisonLines = ['voltage', 'temperature'].map(signal => {
+      const comparison = comparisons[signal];
+      if (!comparison || comparison.status !== 'evaluated') return null;
+      const metrics = comparison.metrics;
+      const unit = signal === 'voltage' ? 'V' : '°C';
+      return signal + ': trend MAE ' +
+        metrics.linear_trend_mae.toFixed(2) + ' ' + unit +
+        ', persistence MAE ' +
+        metrics.persistence_mae.toFixed(2) + ' ' + unit +
+        ' (n=' + comparison.sample_count + ')';
+    }).filter(Boolean);
+    $('forecast-' + prefix + '-comparison').textContent =
+      comparisonLines.length
+        ? 'Rolling-origin chronological MAE — ' +
+          comparisonLines.join('; ') + '.'
+        : 'Chronological comparison needs at least 10 held-out horizon pairs.';
+  }
+
+  function renderMultiLevelForecast(forecasts) {
+    forecastCharts.update(forecasts);
+    const ready = forecasts && forecasts.status === 'ready';
+    const overall = $('forecast-overall-status');
+    overall.textContent = ready ? 'Ready' : 'Collecting data';
+    overall.className = 'pill ' + (ready ? 'normal' : 'warning');
+    $('forecast-history-count').textContent = forecasts
+      ? (forecasts.history_count === forecasts.total_history_count
+          ? forecasts.total_history_count + ' persisted readings'
+          : forecasts.history_count + ' recent of ' +
+            forecasts.total_history_count + ' persisted readings') +
+        ' · minimum ' +
+        forecasts.minimum_history
+      : '0 readings · minimum 15';
+
+    const lastReading = forecasts && forecasts.last_reading;
+    $('forecast-last-updated').textContent = lastReading
+      ? 'Last persisted reading: ' + time(lastReading.timestamp * 1000)
+      : 'No persisted readings yet';
+
+    updateForecastCard(
+      'short',
+      forecasts && forecasts.short_term
+    );
+    updateForecastCard(
+      'medium',
+      forecasts && forecasts.medium_term
+    );
+  }
+
   function updateState(nextState, change) {
     if (change.type === 'error') {
       showDatasetModelError(change.error);
@@ -859,6 +958,7 @@ const source = new EV.ApiSource();
 
     twin.update(state);
     charts.update(state, initialRender);
+    renderMultiLevelForecast(r.forecasts);
     if (!canHistoryPaused) {
       renderCanHistory();
     }
@@ -993,7 +1093,10 @@ const source = new EV.ApiSource();
       });
     }
 
-    requestAnimationFrame(() => charts.resize());
+    requestAnimationFrame(() => {
+      charts.resize();
+      forecastCharts.resize();
+    });
   }
 
   function openRoute(name) {
@@ -1068,7 +1171,10 @@ const source = new EV.ApiSource();
     storage.set('theme', theme);
     syncThemeControls(theme);
 
-    animations.theme(old, next, () => charts.theme());
+    animations.theme(old, next, () => {
+      charts.theme();
+      forecastCharts.theme();
+    });
   }
 
   function downloadReport() {
@@ -1454,6 +1560,7 @@ const source = new EV.ApiSource();
     unsubscribe();
     source.destroy();
     charts.destroy();
+    forecastCharts.destroy();
     twin.destroy();
     animations.destroy();
 

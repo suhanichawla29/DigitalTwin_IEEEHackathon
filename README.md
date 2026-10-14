@@ -112,3 +112,61 @@ SynCAN offline evaluation as separate fields. The EV score is a classifier
 score against simulator-generated episode labels, not a calibrated real-world
 probability, trained-vehicle result, or causal fault diagnosis. All CAN
 messages remain simulated; no physical vehicle or CAN hardware is connected.
+
+## Persistent telemetry and multi-level forecasts
+
+The backend creates `backend\ev_ecu.db` automatically. The project previously
+had `backend\ev_ecu.dbc` (the CAN message definition), but no SQLite database
+file. The SQLite database adds a separate `telemetry_history` table; the
+telemetry writer does not remove or replace other tables. It stores each
+decoded simulated reading once per episode/sample, including its timestamp,
+voltage (V), current (A), temperature (°C), source, CAN ID, and decoded signal
+metadata. Resetting the simulator does not erase persisted telemetry.
+
+The endpoints are:
+
+- `GET /api/telemetry/history?limit=100` — recent stored rows in chronological
+  order; `limit` is 1–600. An optional `before` Unix timestamp excludes later
+  samples.
+- `GET /api/forecast/multilevel` — short- and medium-term forecasts, actual
+  trend points, warning-threshold assessment, and chronological comparisons
+  against persistence.
+- `GET /api/forecast/status` — sample readiness and the separate long-term
+  capacity-model input status.
+
+Short-term (30-second) and medium-term (5-minute) values use an ordinary
+least-squares trend over at most the latest 30 persisted readings. At least 15
+samples are required by default (`EV_FORECAST_MIN_HISTORY` can change this);
+the frontend polls the existing readings endpoint every two seconds, so
+collect at least about 30 seconds of live samples before expecting a numeric
+forecast. Rolling-origin chronological MAE comparisons are returned only when
+there are at least 10 valid horizon pairs. These simulated-data results are
+descriptive backtests, not real-vehicle accuracy claims.
+
+The existing NASA artifact predicts discharge capacity from complete NASA
+discharge-cycle measurement arrays. It cannot infer live EV capacity, SOH,
+degradation rate, or RUL from the dashboard's three signals, so the dashboard
+shows only the short- and medium-term telemetry forecasts. The NASA model,
+forecast metadata, and `POST /api/battery/capacity` endpoint remain available
+for compatible NASA discharge-cycle inputs.
+
+### Run and test the dashboard
+
+From the repository root, start the backend in one PowerShell window:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn main:app --app-dir backend --reload
+```
+
+Start the static frontend server in a second PowerShell window:
+
+```powershell
+.\.venv\Scripts\python.exe -m http.server 5173
+```
+
+Open `http://127.0.0.1:5173/index.html`. The API and forecast endpoints are
+available on port 8000. A new database needs about 30 seconds of the normal
+two-second simulator polling to collect the default 15 samples; previously
+stored readings are retained across restarts and may make forecasts ready
+immediately. The long-term NASA capacity card remains unavailable until
+compatible discharge-cycle measurements are supplied to its existing endpoint.
