@@ -56,30 +56,6 @@
       'Vehicle control unit coordinating the EV subsystems.'
   };
 
-  // Only channels that already exist in the shared demo telemetry are shown.
-  const METRICS = {
-    battery: [
-      ['Pack voltage', 'voltage', 'V'],
-      ['Pack current', 'current', 'A'],
-      ['Pack temperature', 'temperature', '°C']
-    ],
-    motor: [
-      ['Phase current', 'current', 'A'],
-      ['Inverter temperature', 'temperature', '°C']
-    ],
-    thermal: [
-      ['Coolant temperature', 'temperature', '°C']
-    ],
-    bms: [
-      ['Pack voltage', 'voltage', 'V'],
-      ['Cell temperature', 'temperature', '°C']
-    ],
-    vcu: [
-      ['Bus current', 'current', 'A'],
-      ['Controller temperature', 'temperature', '°C']
-    ]
-  };
-
   const STATUS_LABELS = {
     normal: 'Normal',
     warning: 'Warning',
@@ -324,45 +300,157 @@
     }
 
     describe() {
-      const detail = document.getElementById('component-detail');
+      const detail = document.getElementById('ecu-inspector-content');
       if (!detail) return;
 
-      if (!this.selected) {
-        detail.innerHTML =
-          '<span class="detail-prompt">Select a component to inspect its demo status.</span>';
-        return;
-      }
-
-      const id = this.selected;
-      const status = this.statuses[id] || 'normal';
-      const pillClass = STATUS_LABELS[status] ? status : 'offline';
-
+      const overview = !this.selected;
+      const id = this.selected || 'motor';
       const reading = this.state && this.state.current;
-      const metrics = (METRICS[id] || []).map(([label, key, unit]) => {
-        const raw = reading ? reading[key] : null;
-        const value = raw === null || raw === undefined
-          ? '—'
+      const diagnostics = reading && reading.diagnostics;
+      const status = overview
+        ? (diagnostics && diagnostics.severity) || 'offline'
+        : this.statuses[id] || 'offline';
+      const pillClass = STATUS_LABELS[status] ? status : 'offline';
+      const escape = value => String(value).replace(
+        /[&<>"']/g,
+        character => ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;'
+        })[character]
+      );
+      const formatValue = (raw, unit) =>
+        raw === null || raw === undefined || !Number.isFinite(Number(raw))
+          ? 'Unavailable'
           : Number(raw).toFixed(1) + ' ' + unit;
+      const telemetry = [
+        ['Voltage', reading && reading.voltage, 'V'],
+        ['Current', reading && reading.current, 'A'],
+        ['Temperature', reading && reading.temperature, '°C']
+      ];
+      const faults = diagnostics && Array.isArray(diagnostics.faults)
+        ? diagnostics.faults
+        : [];
+      const messages = this.state && Array.isArray(this.state.canMessages)
+        ? this.state.canMessages.slice(-3).reverse()
+        : [];
+      const messageMarkup = messages.length
+        ? messages.map(message => {
+          const timestamp = Number(message.timestamp);
+          const messageTime = Number.isFinite(timestamp)
+            ? new Date(timestamp * 1000).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })
+            : 'Unavailable';
+          const bytes = Array.isArray(message.payload_bytes)
+            ? message.payload_bytes
+                .map(byte => Number(byte).toString(16).padStart(2, '0'))
+                .join(' ')
+                .toUpperCase()
+            : '';
+          const payload = message.payload_hex || bytes || 'Unavailable';
+          const signals = Array.isArray(message.decoded_signals)
+            ? message.decoded_signals.map(signal => {
+              const value = signal.value === null ||
+                signal.value === undefined ||
+                !Number.isFinite(Number(signal.value))
+                ? 'Unavailable'
+                : Number(signal.value).toFixed(2) +
+                  (signal.unit ? ' ' + signal.unit : '');
+              return (
+                '<span><b>' + escape(signal.name || 'Unknown signal') +
+                ':</b> ' + escape(value) + '</span>'
+              );
+            }).join('')
+            : '';
 
-        return (
-          '<li><span>' + label + '</span><b>' + value + '</b></li>'
-        );
-      }).join('');
+          return (
+            '<li class="ecu-can-record">' +
+              '<div class="ecu-can-record-head">' +
+                '<time>' + escape(messageTime) + '</time>' +
+                '<code>' + escape(message.can_id || 'Unavailable') + '</code>' +
+              '</div>' +
+              '<strong>' +
+                escape(message.message_name || 'Unavailable') +
+              '</strong>' +
+              '<code class="ecu-can-payload">' + escape(payload) + '</code>' +
+              '<div class="ecu-can-signals">' +
+                (signals || '<span>Decoded signals: Unavailable</span>') +
+              '</div>' +
+              '<small>' +
+                escape(message.decode_status === 'decoded'
+                  ? 'DBC decoded'
+                  : message.decode_status === 'error'
+                    ? 'Decoder error: ' +
+                      (message.error || 'Unavailable')
+                    : 'Decoder status: Unavailable') +
+              '</small>' +
+            '</li>'
+          );
+        }).join('')
+        : '<li class="ecu-empty">No CAN frames received yet.</li>';
 
       detail.innerHTML =
-        '<div class="detail-head">' +
-          '<strong>' + NAMES[id] + '</strong>' +
+        '<div class="ecu-selected-component">' +
+          '<div>' +
+            '<span>' + (overview
+              ? 'No component selected · vehicle-wide view'
+              : 'Selected component') + '</span>' +
+            '<strong>' + escape(overview ? 'Vehicle Overview' : NAMES[id]) +
+            '</strong>' +
+          '</div>' +
           '<span class="pill ' + pillClass + '">' +
             statusLabel(status) +
           '</span>' +
-          '<button class="text-button detail-clear" data-clear-component>' +
-            'Clear selection' +
-          '</button>' +
+          (overview
+            ? ''
+            : '<button class="text-button detail-clear" data-clear-component>' +
+              'Clear selection</button>') +
         '</div>' +
-        '<p class="detail-desc">' + DETAILS[id] + '</p>' +
-        '<ul class="detail-metrics">' + metrics + '</ul>' +
-        '<p class="detail-source">' +
-          'Simulated reading · shared SKIT006 demo telemetry' +
+        '<p class="ecu-component-description">' +
+          escape(overview
+            ? 'Live vehicle telemetry, rule-based diagnostics, and recent decoded CAN frames.'
+            : DETAILS[id]) +
+        '</p>' +
+        '<div class="ecu-inspector-grid">' +
+          '<section class="ecu-inspector-block">' +
+            '<h4>Latest vehicle telemetry</h4>' +
+            '<ul class="ecu-telemetry-list">' +
+              telemetry.map(([label, value, unit]) =>
+                '<li><span>' + label + '</span><strong>' +
+                escape(formatValue(value, unit)) + '</strong></li>'
+              ).join('') +
+            '</ul>' +
+          '</section>' +
+          '<section class="ecu-inspector-block">' +
+            '<h4>Active diagnostic alerts</h4>' +
+            (faults.length
+              ? '<ul class="ecu-alert-list">' + faults.map(fault =>
+                '<li>' +
+                  '<div><strong>' +
+                    escape(fault.label || fault.code || 'Unavailable') +
+                  '</strong><span class="pill ' +
+                    escape(STATUS_LABELS[fault.severity]
+                      ? fault.severity
+                      : 'offline') + '">' +
+                    escape(statusLabel(fault.severity)) +
+                  '</span></div>' +
+                  '<p>' + escape(fault.description || 'Unavailable') + '</p>' +
+                '</li>'
+              ).join('') + '</ul>'
+              : '<p class="ecu-empty">No active diagnostic alerts.</p>') +
+          '</section>' +
+          '<section class="ecu-inspector-block">' +
+            '<h4>Recent CAN messages</h4>' +
+            '<ul class="ecu-can-list">' + messageMarkup + '</ul>' +
+          '</section>' +
+        '</div>' +
+        '<p class="ecu-inspector-source">' +
+          'Shared live telemetry · rule-based diagnostics · simulated CAN feed' +
         '</p>';
     }
 
@@ -393,7 +481,7 @@
       // Live-data descriptors are re-applied on every sample.
       this.applyStatuses();
 
-      if (this.selected) this.describe();
+      this.describe();
     }
 
     reset() {

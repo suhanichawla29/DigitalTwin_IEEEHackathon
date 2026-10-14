@@ -1280,6 +1280,219 @@ p { color: var(--muted); }
   color: var(--faint);
 }
 
+.ecu-inspector {
+  min-height: 0;
+  padding: 15px 18px 17px;
+  border-top: 1px solid var(--line-soft);
+  background:
+    linear-gradient(120deg, #00aaff08, transparent 60%),
+    var(--panel-deep);
+  color: var(--muted);
+}
+
+.ecu-inspector-heading,
+.ecu-selected-component,
+.ecu-can-record-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+}
+
+.ecu-inspector-kicker,
+.ecu-selected-component > div > span {
+  display: block;
+  color: var(--faint);
+  font-size: 8px;
+  letter-spacing: .65px;
+  text-transform: uppercase;
+}
+
+.ecu-inspector-heading h3 {
+  margin: 3px 0 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.ecu-inspector .can-simulated-badge { white-space: nowrap; }
+
+.ecu-selected-component {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.ecu-selected-component > div { min-width: 0; }
+
+.ecu-selected-component > div > strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.ecu-selected-component .detail-clear { margin-left: auto; }
+
+.ecu-component-description {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.ecu-inspector-grid {
+  display: grid;
+  grid-template-columns:
+    minmax(0, .85fr)
+    minmax(0, 1fr)
+    minmax(0, 1.2fr);
+  gap: 9px;
+  margin-top: 12px;
+}
+
+.ecu-inspector-block {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+
+.ecu-inspector-block h4 {
+  margin: 0 0 8px;
+  color: var(--text);
+  font-size: 9px;
+  font-weight: 600;
+}
+
+.ecu-telemetry-list,
+.ecu-alert-list,
+.ecu-can-list {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ecu-telemetry-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 8px;
+}
+
+.ecu-telemetry-list li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ecu-telemetry-list strong {
+  color: var(--text);
+  font: 600 8px ui-monospace, monospace;
+  text-align: right;
+}
+
+.ecu-alert-list li,
+.ecu-can-record {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-deep) 78%, transparent);
+}
+
+.ecu-alert-list li > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 5px;
+}
+
+.ecu-alert-list strong,
+.ecu-can-record > strong {
+  color: var(--text);
+  font-size: 8px;
+  font-weight: 600;
+}
+
+.ecu-alert-list .pill {
+  flex-shrink: 0;
+  padding: 2px 5px;
+  font-size: 7px;
+}
+
+.ecu-alert-list p {
+  margin: 5px 0 0;
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.ecu-can-list {
+  max-height: 270px;
+  overflow-y: auto;
+}
+
+.ecu-can-record-head {
+  margin-bottom: 4px;
+  color: var(--faint);
+  font-size: 7px;
+}
+
+.ecu-can-record-head code,
+.ecu-can-payload {
+  color: var(--cyan);
+  font: 7px ui-monospace, monospace;
+}
+
+.ecu-can-record > strong {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.ecu-can-payload {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.ecu-can-signals {
+  display: grid;
+  gap: 2px;
+  margin-top: 5px;
+  font-size: 7px;
+  overflow-wrap: anywhere;
+}
+
+.ecu-can-signals b { color: var(--muted); }
+
+.ecu-can-record > small {
+  display: block;
+  margin-top: 5px;
+  color: var(--faint);
+  font-size: 7px;
+}
+
+.ecu-empty {
+  margin: 0;
+  color: var(--faint);
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.ecu-inspector-source {
+  margin: 9px 0 0;
+  color: var(--faint);
+  font-size: 7px;
+  letter-spacing: .25px;
+}
+
 .pill.offline {
   color: var(--muted);
   border-color: var(--line);
@@ -2240,6 +2453,10 @@ td.empty { padding: 40px; text-align: center; }
 
 @media (max-width: 600px) {
   .dataset-model-status { grid-template-columns: 1fr; }
+  .ecu-inspector { padding: 13px 12px; }
+  .ecu-inspector-grid { grid-template-columns: minmax(0, 1fr); }
+  .ecu-inspector-block { padding: 10px; }
+  .ecu-can-list { max-height: 220px; }
   .can-monitor-panel { margin-top: 14px; }
   .can-monitor-header { gap: 8px; }
   .can-monitor-header p { font-size: 8px; }

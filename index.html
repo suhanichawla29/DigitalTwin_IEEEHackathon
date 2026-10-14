@@ -485,13 +485,22 @@
             </span>
           </div>
 
-          <div
-            class="component-detail"
+          <section
+            class="component-detail ecu-inspector"
             id="component-detail"
-            role="status"
+            aria-labelledby="ecu-inspector-title"
           >
-            Select a component to inspect its demo status.
-          </div>
+            <div class="ecu-inspector-heading">
+              <div>
+                <span class="ecu-inspector-kicker">Live component monitor</span>
+                <h3 id="ecu-inspector-title">ECU Inspector</h3>
+              </div>
+              <span class="can-simulated-badge">SIMULATED CAN</span>
+            </div>
+            <div id="ecu-inspector-content" aria-live="polite">
+              <p class="detail-prompt">Waiting for live telemetry.</p>
+            </div>
+          </section>
         </section>
 
         <!-- Alerts and risk -->
