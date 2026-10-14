@@ -16,6 +16,17 @@
 
   const EV = root.EV = root.EV || {};
 
+  // Capture this script's own URL while it is still the executing script.
+  // `document.currentScript` is only valid during synchronous execution, so it
+  // MUST be read here. Reading it later (inside the async 3D loader) returns
+  // null or, worse, the caller's script (script.js), which previously caused
+  // the app to dynamically import itself and crash.
+  const SELF_URL = (document.currentScript && document.currentScript.src) || '';
+
+  const MODULE_URL = SELF_URL
+    ? SELF_URL.replace(/[^/]*$/, 'digital-twin-3d.js')
+    : new URL('js/digital-twin-3d.js', document.baseURI).href;
+
   const COLORS = {
     battery: '#17dfba',
     motor: '#00d9ff',
@@ -95,13 +106,7 @@
   }
 
   function moduleUrl() {
-    const current = document.currentScript;
-
-    if (current && current.src) {
-      return current.src.replace(/digital-twin\.js.*$/, 'digital-twin-3d.js');
-    }
-
-    return new URL('js/digital-twin-3d.js', document.baseURI).href;
+    return MODULE_URL;
   }
 
   class DigitalTwin {

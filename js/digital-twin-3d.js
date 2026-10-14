@@ -370,6 +370,12 @@ export function createViewer(container, options = {}) {
 
     const delta = Math.min(clock.getDelta(), 0.05);
 
+    // Skip rendering (and rotation) while the viewer is not laid out — e.g. when
+    // another dashboard route is active — to avoid off-screen GPU work.
+    if (container.clientWidth === 0 || container.clientHeight === 0) {
+      return;
+    }
+
     // Automatic 360° rotation about the vehicle's vertical axis.
     if (autoRotate) {
       carRoot.rotation.y += ROTATION_SPEED * delta;
