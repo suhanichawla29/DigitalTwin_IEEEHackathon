@@ -110,8 +110,10 @@
 
   async function clearCanMessages() {
     const response = await fetch(CAN_MESSAGES_URL, { method: 'DELETE' });
-    if (response.ok) return;
-    throw new Error('Failed to clear simulated CAN message history');
+    if (!response.ok) {
+      throw new Error('Failed to clear simulated CAN message history');
+    }
+    return response.json();
   }
 
   /*

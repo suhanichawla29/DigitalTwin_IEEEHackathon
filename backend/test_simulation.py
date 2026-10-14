@@ -1,12 +1,16 @@
 import unittest
 
 from main import (
+    CAN_HISTORY_LIMIT,
     SimulationState,
+    _can_messages,
     clear_can_messages,
     get_can_messages,
     get_readings,
+    make_demo_frame,
     reset_simulation,
 )
+from can_decoder import decode_can_frame
 
 
 class SimulationTests(unittest.TestCase):
@@ -45,6 +49,28 @@ class SimulationTests(unittest.TestCase):
         self.assertGreater(simulation.values["voltage"], 430)
         self.assertGreaterEqual(simulation.sample_index, 60)
         self.assertLessEqual(simulation.sample_index, 120)
+
+    def test_over_temperature_remains_within_dbc_encoding_range(self):
+        simulation = SimulationState(seed=29)
+        simulation.select("over_temperature", ())
+        reading = None
+        for _ in range(500):
+            reading = simulation.advance()
+
+        frame = make_demo_frame(
+            reading["voltage"],
+            reading["current"],
+            reading["temperature"],
+        )
+        decoded = decode_can_frame(0x100, frame)
+
+        self.assertLessEqual(reading["temperature"], 200)
+        self.assertEqual(decoded["decode_status"], "decoded")
+        self.assertAlmostEqual(
+            decoded["temperature"],
+            reading["temperature"],
+            delta=0.051,
+        )
 
     def test_gradual_and_severe_modes_change_all_three_signals(self):
         gradual = SimulationState(seed=21)
@@ -168,8 +194,33 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(get_can_messages(can_id="0x999")["count"], 0)
 
         result = clear_can_messages()
-        self.assertEqual(result, {"status": "cleared", "count": 0})
+        self.assertEqual(result["status"], "cleared")
+        self.assertEqual(result["count"], 0)
+        self.assertGreater(result["cleared_at"], 0)
         self.assertEqual(get_can_messages()["messages"], [])
+
+    def test_can_message_history_is_bounded(self):
+        reset_simulation()
+        for index in range(CAN_HISTORY_LIMIT + 7):
+            _can_messages.append({
+                "timestamp": index,
+                "can_id": "0x100",
+                "message_name": "ECU_Telemetry",
+                "source_ecu": "ECU",
+                "dlc": 8,
+                "payload_hex": "",
+                "payload_bytes": [],
+                "decoded_signals": [],
+                "decode_status": "decoded",
+                "source": "SIMULATED_CAN",
+                "synCAN_status": "not_evaluated",
+            })
+
+        history = get_can_messages()
+        self.assertEqual(history["count"], CAN_HISTORY_LIMIT)
+        self.assertEqual(history["messages"][0]["timestamp"], 7)
+
+        clear_can_messages()
 
     def test_reset_endpoint_clears_predictor_history_and_sample_index(self):
         for _ in range(4):

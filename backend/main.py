@@ -416,7 +416,8 @@ def clear_can_messages():
     """Clear the bounded CAN history without resetting the simulation."""
     with _episode_lock:
         _can_messages.clear()
-    return {"status": "cleared", "count": 0}
+        cleared_at = time.time()
+    return {"status": "cleared", "count": 0, "cleared_at": cleared_at}
 
 
 @app.get("/api/scenarios")

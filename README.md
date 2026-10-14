@@ -58,3 +58,16 @@ The artifacts are `backend\models\nasa_capacity.joblib` and
 training. `GET /api/models` reports each model's dataset presence, artifact
 load status, and metadata. Dataset-specific inference endpoints are
 `POST /api/battery/capacity` and `POST /api/can/anomaly`.
+
+## Simulated CAN dashboard monitor
+
+The home dashboard's ECU Encoder & CAN Message Monitor uses the current
+FastAPI simulation sample, encodes the DBC-defined `ECU_Telemetry` message
+(CAN ID `0x100`, sender `ECU`, DLC 8) with cantools, and decodes the same bytes
+before diagnostics consume the readings. The dashboard monitor and its CAN
+Message History are views of the same backend-bounded 100-frame history.
+`GET /api/can/messages` supports CAN ID and message-name filters, and
+`DELETE /api/can/messages` clears the history. All traffic is simulated; no
+physical CAN adapter is connected. The project DBC frame is not mapped to
+SynCAN's separate IDs/signals, so those frames are correctly shown as not
+evaluated by the SynCAN detector.

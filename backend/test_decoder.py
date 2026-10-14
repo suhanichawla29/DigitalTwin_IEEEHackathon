@@ -42,17 +42,18 @@ class DecoderTests(unittest.TestCase):
         self.assertEqual(result["decoded_signals"], [])
 
 
-scenarios = [
-    ("Normal", 400, 35, 45),
-    ("Over-temperature", 400, 35, 85),
-    ("Under-voltage", 270, 35, 45),
-    ("Over-current", 400, 120, 45),
-    ("Over-voltage", 450, 35, 45),
-]
+if __name__ == "__main__":
+    scenarios = [
+        ("Normal", 400, 35, 45),
+        ("Over-temperature", 400, 35, 85),
+        ("Under-voltage", 270, 35, 45),
+        ("Over-current", 400, 120, 45),
+        ("Over-voltage", 450, 35, 45),
+    ]
 
-for name, voltage, current, temperature in scenarios:
-    frame = make_frame(voltage, current, temperature)
-    result = decode_can_frame(0x100, frame)
+    for name, voltage, current, temperature in scenarios:
+        frame = make_frame(voltage, current, temperature)
+        result = decode_can_frame(0x100, frame)
 
-    print(f"\n{name}:")
-    print(result)
+        print(f"\n{name}:")
+        print(result)

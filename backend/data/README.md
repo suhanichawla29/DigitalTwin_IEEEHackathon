@@ -50,6 +50,13 @@ original `B0005.mat`, `B0006.mat`, `B0007.mat`, and `B0018.mat` files through
 the official NASA Ames PCoE channel and place them unchanged in
 `backend\data\nasa`.
 
+The current PCoE page links a separate 209 MB `5. Battery Data Set.zip`
+archive at <https://phm-datasets.s3.amazonaws.com/NASA/5.+Battery+Data+Set.zip>.
+That archive passed ZIP CRC validation but contains nested `BatteryAgingARC`
+archives and none of the four required B-series `.mat` runs. It is a different
+NASA battery dataset and is not compatible with this loader; do not rename or
+use it as the requested files.
+
 ## ETAS SynCAN
 
 Official repository: <https://github.com/etas/SynCAN>. Its CSV data uses

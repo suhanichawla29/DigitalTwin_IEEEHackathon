@@ -140,6 +140,7 @@ const source = new EV.ApiSource();
   let canHistoryPaused = false;
   let canHistoryFilter = '';
   let selectedCanMessage = null;
+  let canHistoryClearedAt = 0;
 
   const controller = new AbortController();
 
@@ -257,12 +258,15 @@ const source = new EV.ApiSource();
     const messages = Array.isArray(state.canMessages)
       ? state.canMessages
       : [];
-    const matching = messages.filter(message => [
-      message.can_id,
-      message.message_name,
-      message.source_ecu,
-      message.payload_hex
-    ].join(' ').toLowerCase().includes(canHistoryFilter));
+    const matching = messages.filter(message =>
+      Number(message.timestamp) >= canHistoryClearedAt &&
+      [
+        message.can_id,
+        message.message_name,
+        message.source_ecu,
+        message.payload_hex
+      ].join(' ').toLowerCase().includes(canHistoryFilter)
+    );
     const newest = matching.slice().reverse();
     const selected = newest.find(message =>
       message.timestamp + ':' + message.can_id === selectedCanMessage
@@ -1210,7 +1214,12 @@ const source = new EV.ApiSource();
 
   listen($('can-history-clear'), 'click', async () => {
     try {
-      await EV.clearCanMessages();
+      const result = await EV.clearCanMessages();
+      const clearedAt = Number(result.cleared_at);
+      if (!Number.isFinite(clearedAt)) {
+        throw new Error('API did not return a valid CAN history clear time');
+      }
+      canHistoryClearedAt = clearedAt;
       selectedCanMessage = null;
       if (state) state.canMessages = [];
       renderCanHistory();
