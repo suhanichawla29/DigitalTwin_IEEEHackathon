@@ -2,6 +2,8 @@ import unittest
 
 from main import (
     SimulationState,
+    clear_can_messages,
+    get_can_messages,
     get_readings,
     reset_simulation,
 )
@@ -140,6 +142,34 @@ class SimulationTests(unittest.TestCase):
             result["prediction"]["status"],
             {"unavailable", "warming_up"},
         )
+        self.assertEqual(result["can_message"]["can_id"], "0x100")
+        self.assertEqual(result["can_message"]["message_name"], "ECU_Telemetry")
+        self.assertEqual(result["can_message"]["source_ecu"], "ECU")
+        self.assertEqual(result["can_message"]["dlc"], 8)
+        self.assertEqual(result["can_message"]["decode_status"], "decoded")
+        self.assertEqual(
+            result["can_message"]["synCAN_status"],
+            "not_evaluated",
+        )
+        self.assertAlmostEqual(result["voltage"], result["can_message"]["decoded_signals"][0]["value"])
+        self.assertAlmostEqual(result["current"], result["can_message"]["decoded_signals"][1]["value"])
+        self.assertAlmostEqual(result["temperature"], result["can_message"]["decoded_signals"][2]["value"])
+        self.assertEqual(result["can_messages"][-1], result["can_message"])
+
+    def test_can_message_history_filter_and_clear(self):
+        reset_simulation()
+        get_readings()
+
+        history = get_can_messages()
+        self.assertEqual(history["source"], "SIMULATED_CAN")
+        self.assertEqual(history["count"], 1)
+        self.assertEqual(get_can_messages(can_id="0x100")["count"], 1)
+        self.assertEqual(get_can_messages(message_name="telemetry")["count"], 1)
+        self.assertEqual(get_can_messages(can_id="0x999")["count"], 0)
+
+        result = clear_can_messages()
+        self.assertEqual(result, {"status": "cleared", "count": 0})
+        self.assertEqual(get_can_messages()["messages"], [])
 
     def test_reset_endpoint_clears_predictor_history_and_sample_index(self):
         for _ in range(4):
@@ -151,6 +181,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(result["history_count"], 0)
         self.assertEqual(next_reading["sample_index"], 1)
         self.assertEqual(next_reading["prediction"]["history_count"], 1)
+        self.assertEqual(next_reading["can_message"]["decode_status"], "decoded")
 
 
 if __name__ == "__main__":
