@@ -9,13 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from can_decoder import decode_can_frame
+from diagnostics import diagnose
 
 app = FastAPI(title="EV Digital Twin API")
 
 # Allow your local frontend to access the API
+# Development only; restrict origins before deployment.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Development only
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,13 +52,24 @@ def home():
 
 @app.get("/api/readings")
 def get_readings():
-    # Demo data for now; later replace with incoming CAN frames.
+    # Simulated CAN data for now; later replace with incoming CAN frames.
     frame = make_demo_frame(400, 35, 45)
+
+    # Decode the simulated CAN frame into sensor readings.
     readings = decode_can_frame(0x100, frame)
 
+    # Run our Python fault-detection rules on the decoded readings.
+    diagnostics = diagnose(
+        voltage=readings["voltage"],
+        current=readings["current"],
+        temperature=readings["temperature"],
+    )
+
+    # Return the sensor readings and diagnostic results.
     return {
         **readings,
-        "ecu_status": "NORMAL",
+        "ecu_status": diagnostics["status"],
+        "diagnostics": diagnostics,
         "source": "SIMULATED_CAN",
     }
 
