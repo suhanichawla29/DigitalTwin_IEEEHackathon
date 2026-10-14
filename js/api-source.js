@@ -3,6 +3,7 @@
 
   const EV = root.EV = root.EV || {};
   const API_URL = 'http://127.0.0.1:8000/api/readings';
+  const RESET_URL = 'http://127.0.0.1:8000/api/reset';
 
   // Map frontend scenario IDs to Python API scenario IDs.
   const SCENARIO_MAP = {
@@ -154,14 +155,10 @@
             'No diagnostic faults detected.'
           );
 
-        // Illustrative demo scores, not real vehicle predictions.
+        // Keep the dashboard's illustrative health indicator separate from ML risk.
         const health = hasFaults
           ? (severity === 'critical' ? 45 : 70)
           : 92;
-
-        const risk = hasFaults
-          ? (severity === 'critical' ? 85 : 55)
-          : 8;
 
         const codeMap = {
           'over-temperature': 'over-temperature',
@@ -183,7 +180,6 @@
           label,
           severity,
           description,
-          risk,
           health,
           faults: apiFaults,
 
@@ -229,6 +225,13 @@
           current: Number(raw.current),
           temperature: Number(raw.temperature),
           health,
+          prediction: raw.prediction || {
+            model_status: 'unavailable',
+            history_count: 0,
+            history_required: 30,
+            failure_probability: null,
+            forecast_horizon_seconds: 300
+          },
           sampleIndex: raw.sample_index,
           canMessage: raw.can_message || null,
 
@@ -363,7 +366,7 @@
       this.timer = null;
     }
 
-    reset() {
+    async reset() {
       this.pause();
 
       this.readings = [];
@@ -375,7 +378,27 @@
       this.legacyScenario = null;
       this.lastFaultKey = '';
 
-      this.start();
+      try {
+        const response = await fetch(RESET_URL, { method: 'POST' });
+        if (!response.ok) {
+          throw new Error('Backend reset failed with HTTP ' + response.status);
+        }
+      } catch (error) {
+        console.error('EV API reset error:', error);
+        const state = {
+          current: this.current,
+          readings: [...this.readings],
+          canMessages: [...this.canMessages],
+          events: [...this.events],
+          running: false
+        };
+        this.listeners.forEach(callback => callback(state, {
+          type: 'error',
+          error
+        }));
+      } finally {
+        this.start();
+      }
     }
 
     setScenario(scenario) {

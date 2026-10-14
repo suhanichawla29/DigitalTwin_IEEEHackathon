@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+cantools
+numpy
+scikit-learn
+joblib

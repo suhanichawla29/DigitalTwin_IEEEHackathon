@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#020817">
   <meta
     name="description"
-    content="SKIT006 — simulated EV digital twin monitoring and diagnostic interface. No physical CAN connection or AI prediction."
+    content="SKIT006 — simulated EV digital twin monitoring with synthetic telemetry and an ML forecast trained on synthetic data. No physical CAN connection."
   >
 
   <title>EV Monitor — Digital Twin & Predictive Diagnostics</title>
@@ -247,7 +247,7 @@
         </span>
 
         <span class="demo-description">
-          Synthetic telemetry. No physical ECU connection or AI predictions.
+          Synthetic telemetry and ML forecast trained on synthetic data. No physical ECU connection.
         </span>
       </div>
 
@@ -508,14 +508,14 @@
               Predicted Risk
             </h2>
 
-            <span class="subtle-badge">DEMO</span>
+            <span class="subtle-badge">ML · SYNTHETIC DATA</span>
           </div>
 
           <div class="risk-body">
             <div
               class="ring risk-ring"
               role="img"
-              aria-label="Simulated risk 12 percent"
+              aria-label="Machine-learning forecast warming up"
               id="risk-ring-container"
             >
               <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -539,27 +539,26 @@
               </svg>
 
               <div class="ring-value">
-                <strong id="risk-value">12<span>%</span></strong>
+                <strong id="risk-value">—</strong>
               </div>
             </div>
 
             <div>
-              <strong id="risk-label" class="risk-label">Low risk</strong>
+              <strong id="risk-label" class="risk-label">Warming up</strong>
               <p id="risk-explanation">
-                Normal demo scenario.<br>
-                No immediate simulated fault.
+                Collecting recent telemetry for the model forecast.
               </p>
             </div>
           </div>
 
           <p class="risk-disclaimer">
             <i data-lucide="info"></i>
-            Illustrative scenario score. Not an ML prediction or a safety assessment.
+            Synthetic-data model probability within a fixed five-minute horizon; not a countdown or safety assessment.
           </p>
 
           <div class="diagnostic-bottom">
             <span>Diagnostics source</span>
-            <strong>Local demo rules</strong>
+            <strong>ML forecast · separate from local diagnostic rules</strong>
           </div>
         </aside>
 
@@ -797,6 +796,7 @@
                 <th>Current</th>
                 <th>Temperature</th>
                 <th>Health · demo</th>
+                <th>ML probability · 5 min</th>
                 <th>Scenario</th>
               </tr>
             </thead>
@@ -1016,17 +1016,16 @@
           <div class="panel-header">
             <div>
               <h2>Transparent diagnostics</h2>
-              <p>Scenario-driven demonstration · no trained model</p>
+              <p>Rule-based alerts are separate from the synthetic-data ML forecast</p>
             </div>
 
             <i data-lucide="workflow"></i>
           </div>
 
           <p>
-            The simulator classifies synthetic samples using the demo
-            thresholds below. Health and risk are illustrative lookup
-            values, not probabilities, equipment health measurements,
-            or vehicle safety guidance.
+            Rule-based alerts use the thresholds below. The failure
+            probability above is produced by a separately trained model
+            using synthetic data; it is not a countdown or safety assessment.
           </p>
 
           <div class="table-scroll">
@@ -1035,8 +1034,7 @@
                 <tr>
                   <th>Demo state</th>
                   <th>Demo trigger</th>
-                  <th>Risk</th>
-                  <th>Health</th>
+                  <th>Rule result</th>
                 </tr>
               </thead>
 
@@ -1044,29 +1042,31 @@
                 <tr>
                   <td>Normal</td>
                   <td>None of the demo triggers</td>
-                  <td>12%</td>
-                  <td>92/100</td>
+                  <td>No active alert</td>
                 </tr>
 
                 <tr>
                   <td>Over-temperature</td>
-                  <td>Temperature ≥ 60 °C</td>
-                  <td>64%</td>
-                  <td>68/100</td>
+                  <td>Temperature &gt; 80 °C</td>
+                  <td>Critical alert</td>
                 </tr>
 
                 <tr>
                   <td>Under-voltage</td>
-                  <td>Voltage ≤ 300 V</td>
-                  <td>72%</td>
-                  <td>61/100</td>
+                  <td>Voltage &lt; 300 V</td>
+                  <td>Warning alert</td>
                 </tr>
 
                 <tr>
                   <td>Over-current</td>
-                  <td>Current ≥ 80 A</td>
-                  <td>86%</td>
-                  <td>48/100</td>
+                  <td>Current &gt; 100 A</td>
+                  <td>Critical alert</td>
+                </tr>
+
+                <tr>
+                  <td>Over-voltage</td>
+                  <td>Voltage &gt; 430 V</td>
+                  <td>Warning alert</td>
                 </tr>
               </tbody>
             </table>
@@ -1076,12 +1076,12 @@
             <i data-lucide="unplug"></i>
 
             <div>
-              <strong>Ready for a future data adapter</strong>
+              <strong>Simulated DBC telemetry</strong>
 
               <p>
-                A replaceable source contract separates readings from
-                presentation. Backend CAN decoding and a validated
-                diagnostic model are not connected.
+                The backend encodes and decodes simulated CAN frames using
+                the project DBC. Predictions are trained and evaluated on
+                synthetic episodes only; no physical vehicle is connected.
               </p>
             </div>
           </div>

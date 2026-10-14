@@ -95,7 +95,7 @@
     ],
     'predictive-analytics': [
       'Predictive Analytics',
-      'Transparent demo diagnostics — no AI model connected'
+      'Five-minute ML forecast from synthetic training data, separate from rule alerts'
     ],
     settings: [
       'Workspace Settings',
@@ -225,6 +225,7 @@ const source = new EV.ApiSource();
         <td>${r.current.toFixed(1)} A</td>
         <td>${r.temperature.toFixed(1)} °C</td>
         <td>${r.health} / 100</td>
+        <td>${readingForecast(r.prediction)}</td>
         <td>
           <span class="pill ${escape(r.diagnostics.severity)}">
             ${escape(r.diagnostics.label)}
@@ -233,11 +234,28 @@ const source = new EV.ApiSource();
       </tr>
     `).join('') || `
       <tr>
-        <td colspan="6" class="empty">
+        <td colspan="7" class="empty">
           No readings match this filter.
         </td>
       </tr>
     `;
+  }
+
+  function readingForecast(prediction) {
+    if (
+      prediction?.model_status === 'ready' &&
+      Number.isFinite(prediction.failure_probability)
+    ) {
+      return (prediction.failure_probability * 100).toFixed(1) + '%';
+    }
+
+    if (prediction?.model_status === 'warming_up') {
+      return 'Warming up (' +
+        prediction.history_count + '/' +
+        prediction.history_required + ')';
+    }
+
+    return 'Unavailable';
   }
 
   function renderCanDetails(message) {
@@ -456,6 +474,7 @@ const source = new EV.ApiSource();
           <th>Current</th>
           <th>Temperature</th>
           <th>Health · demo</th>
+          <th>ML probability · 5 min</th>
           <th>Scenario</th>
         </tr>
       `;
@@ -500,6 +519,43 @@ const source = new EV.ApiSource();
 
     const r = state.current;
     const d = r.diagnostics;
+    const prediction = r.prediction || {};
+    const probability = prediction.failure_probability;
+    const modelReady =
+      prediction.model_status === 'ready' &&
+      Number.isFinite(probability);
+    const riskPercentage = modelReady
+      ? Math.max(0, Math.min(100, probability * 100))
+      : 0;
+
+    $('risk-value').innerHTML = modelReady
+      ? riskPercentage.toFixed(1) + '<span>%</span>'
+      : '—';
+    $('risk-label').textContent = modelReady
+      ? 'Model estimate'
+      : prediction.model_status === 'warming_up'
+        ? 'Warming up'
+        : 'Model unavailable';
+    $('risk-explanation').textContent = modelReady
+      ? 'Model-estimated probability of a synthetic failure within the next five minutes. The horizon is fixed, not a countdown.'
+      : prediction.model_status === 'warming_up'
+        ? 'Collecting ' + (prediction.history_required || 30) +
+          ' consecutive readings (' + (prediction.history_count || 0) +
+          ' collected).'
+        : 'Train and load the model to enable the five-minute forecast.';
+    $('risk-progress').style.stroke = 'var(--cyan)';
+    $('risk-label').style.color = 'var(--cyan)';
+    $('risk-ring-container').setAttribute(
+      'aria-label',
+      modelReady
+        ? 'Model-estimated failure probability ' +
+          riskPercentage.toFixed(1) +
+          ' percent within the next five minutes; fixed forecast horizon, not a countdown.'
+        : prediction.model_status === 'warming_up'
+          ? 'Machine-learning prediction warming up.'
+          : 'Machine-learning model unavailable.'
+    );
+    animations.ring($('risk-progress'), riskPercentage);
 
     ['voltage', 'current', 'temperature', 'health'].forEach(key => {
       animations.number(
@@ -605,41 +661,13 @@ const source = new EV.ApiSource();
         (d.code === 'normal' ? 'circle-check' : 'triangle-alert') +
         '"></i>';
 
-      $('risk-label').textContent = d.severity === 'normal'
-        ? 'Low risk'
-        : d.severity === 'critical'
-          ? 'High demo risk'
-          : 'Elevated demo risk';
-
-      const riskColor = d.severity === 'normal'
-        ? 'green'
-        : d.severity === 'critical'
-          ? 'red'
-          : 'amber';
-
-      $('risk-label').style.color = `var(--${riskColor})`;
-      $('risk-progress').style.stroke = `var(--${riskColor})`;
-
-      $('risk-explanation').textContent = d.code === 'normal'
-        ? 'Normal demo scenario. No immediate simulated fault.'
-        : d.label + ' scenario active. Illustrative score only.';
-
-      $('risk-value').innerHTML = d.risk + '<span>%</span>';
       $('overview-health').textContent = d.health + '%';
-
-      $('risk-ring-container').setAttribute(
-        'aria-label',
-        'Simulated risk ' +
-          d.risk +
-          ' percent. Not an AI prediction.'
-      );
 
       $('health-ring-container').setAttribute(
         'aria-label',
         'Illustrative demo health ' + d.health + ' percent.'
       );
 
-      animations.ring($('risk-progress'), d.risk);
       animations.ring($('health-progress'), d.health);
 
       lastDiagnostic = d.code;
