@@ -7,7 +7,7 @@
   <meta name="theme-color" content="#020817">
   <meta
     name="description"
-    content="SKIT006 — simulated EV digital twin monitoring and diagnostic interface. No physical CAN connection or AI prediction."
+    content="SKIT006 — simulated EV digital twin with a synthetic-data-trained failure predictor. No physical vehicle connection."
   >
 
   <title>EV Monitor — Digital Twin & Predictive Diagnostics..</title>
@@ -237,7 +237,7 @@
         </span>
 
         <span class="demo-description">
-          Synthetic telemetry. No physical ECU connection or AI predictions.
+          Synthetic telemetry and model estimates. No physical vehicle connection.
         </span>
       </div>
 
@@ -276,7 +276,7 @@
           </div>
 
           <div class="metric-reading">
-            <strong id="value-voltage">348</strong>
+            <strong id="value-voltage">400</strong>
             <span>V</span>
             <span class="metric-trend" id="trend-voltage">—</span>
           </div>
@@ -310,7 +310,7 @@
           </div>
 
           <div class="metric-reading">
-            <strong id="value-current">32</strong>
+            <strong id="value-current">35</strong>
             <span>A</span>
             <span class="metric-trend" id="trend-current">—</span>
           </div>
@@ -344,7 +344,7 @@
           </div>
 
           <div class="metric-reading">
-            <strong id="value-temperature">36</strong>
+            <strong id="value-temperature">45</strong>
             <span>°C</span>
             <span class="metric-trend" id="trend-temperature">—</span>
           </div>
@@ -373,18 +373,18 @@
               <i data-lucide="heart-pulse"></i>
             </span>
 
-            <span class="metric-name">ECU Health</span>
-            <span class="metric-code">DEMO</span>
+            <span class="metric-name">Model Condition</span>
+            <span class="metric-code">EST.</span>
           </div>
 
           <div class="metric-reading">
-            <strong id="value-health">92</strong>
+            <strong id="value-health">—</strong>
             <span>/ 100</span>
-            <span id="health-badge" class="pill normal">Normal</span>
+            <span id="health-badge" class="pill warning">Warming up</span>
           </div>
 
           <div class="metric-bottom">
-            <span>Illustrative score · not measured</span>
+            <span>Derived from the five-minute model probability</span>
 
             <svg
               class="sparkline"
@@ -493,17 +493,17 @@
           <div class="risk-heading">
             <h2>
               <i data-lucide="brain-circuit"></i>
-              Predicted Risk
+              Failure Forecast
             </h2>
 
-            <span class="subtle-badge">DEMO</span>
+            <span class="subtle-badge">SYNTHETIC MODEL</span>
           </div>
 
           <div class="risk-body">
             <div
               class="ring risk-ring"
               role="img"
-              aria-label="Simulated risk 12 percent"
+              aria-label="Failure prediction warming up."
               id="risk-ring-container"
             >
               <svg viewBox="0 0 120 120" aria-hidden="true">
@@ -522,32 +522,33 @@
                   r="50"
                   pathLength="100"
                   stroke-dasharray="100"
-                  stroke-dashoffset="88"
+                  stroke-dashoffset="100"
                 />
               </svg>
 
               <div class="ring-value">
-                <strong id="risk-value">12<span>%</span></strong>
+                <strong id="risk-value">—<span></span></strong>
               </div>
             </div>
 
             <div>
-              <strong id="risk-label" class="risk-label">Low risk</strong>
+              <strong id="risk-label" class="risk-label">
+                Failure probability · next 5 min
+              </strong>
               <p id="risk-explanation">
-                Normal demo scenario.<br>
-                No immediate simulated fault.
+                Collecting readings. Fixed five-minute forecast horizon; not a countdown.
               </p>
             </div>
           </div>
 
           <p class="risk-disclaimer">
             <i data-lucide="info"></i>
-            Illustrative scenario score. Not an ML prediction or a safety assessment.
+            Trained on synthetic episodes only; not validated for real vehicles or safety decisions.
           </p>
 
           <div class="diagnostic-bottom">
             <span>Diagnostics source</span>
-            <strong>Local demo rules</strong>
+            <strong>Python rule-based diagnostics</strong>
           </div>
         </aside>
 
@@ -635,7 +636,7 @@
               class="ring health-ring"
               id="health-ring-container"
               role="img"
-              aria-label="Demo health 92 percent"
+              aria-label="Model-derived condition index unavailable."
             >
               <svg viewBox="0 0 120 120" aria-hidden="true">
                 <defs>
@@ -671,8 +672,8 @@
               </svg>
 
               <div class="ring-value">
-                <strong id="overview-health">92%</strong>
-                <small>Demo health</small>
+                <strong id="overview-health">—</strong>
+                <small>Model condition</small>
               </div>
             </div>
 
@@ -784,8 +785,10 @@
                 <th>Voltage</th>
                 <th>Current</th>
                 <th>Temperature</th>
-                <th>Health · demo</th>
+                <th>Model condition</th>
+                <th>Failure probability · 5 min</th>
                 <th>Scenario</th>
+                <th>Rule diagnostics</th>
               </tr>
             </thead>
 
@@ -835,7 +838,7 @@
             data-history-filter="readings"
             aria-pressed="false"
           >
-            Readings
+            Readings &amp; predictions
           </button>
 
           <label class="history-search">
@@ -882,57 +885,57 @@
           <div class="panel-header">
             <div>
               <h2>Transparent diagnostics</h2>
-              <p>Scenario-driven demonstration · no trained model</p>
+              <p>Separate rule-based diagnostic thresholds</p>
             </div>
 
             <i data-lucide="workflow"></i>
           </div>
 
           <p>
-            The simulator classifies synthetic samples using the demo
-            thresholds below. Health and risk are illustrative lookup
-            values, not probabilities, equipment health measurements,
-            or vehicle safety guidance.
+            These independent rule checks describe the current synthetic
+            sample. They are not used to calculate the model's five-minute
+            failure probability.
           </p>
 
           <div class="table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th>Demo state</th>
-                  <th>Demo trigger</th>
-                  <th>Risk</th>
-                  <th>Health</th>
+                  <th>Rule-based alert</th>
+                  <th>Trigger in this prototype</th>
+                  <th>Diagnostic severity</th>
                 </tr>
               </thead>
 
               <tbody>
                 <tr>
                   <td>Normal</td>
-                  <td>None of the demo triggers</td>
-                  <td>12%</td>
-                  <td>92/100</td>
+                  <td>No rule triggered</td>
+                  <td>—</td>
                 </tr>
 
                 <tr>
                   <td>Over-temperature</td>
-                  <td>Temperature ≥ 60 °C</td>
-                  <td>64%</td>
-                  <td>68/100</td>
+                  <td>Temperature &gt; 80 °C</td>
+                  <td>Critical</td>
                 </tr>
 
                 <tr>
                   <td>Under-voltage</td>
-                  <td>Voltage ≤ 300 V</td>
-                  <td>72%</td>
-                  <td>61/100</td>
+                  <td>Voltage &lt; 300 V</td>
+                  <td>Warning</td>
                 </tr>
 
                 <tr>
                   <td>Over-current</td>
-                  <td>Current ≥ 80 A</td>
-                  <td>86%</td>
-                  <td>48/100</td>
+                  <td>Current &gt; 100 A</td>
+                  <td>Critical</td>
+                </tr>
+
+                <tr>
+                  <td>Over-voltage</td>
+                  <td>Voltage &gt; 430 V</td>
+                  <td>Warning</td>
                 </tr>
               </tbody>
             </table>
@@ -942,12 +945,12 @@
             <i data-lucide="unplug"></i>
 
             <div>
-              <strong>Ready for a future data adapter</strong>
+              <strong>Connected to the local FastAPI prototype</strong>
 
               <p>
-                A replaceable source contract separates readings from
-                presentation. Backend CAN decoding and a validated
-                diagnostic model are not connected.
+                Readings pass through simulated CAN decoding. The
+                failure predictor is trained on synthetic episodes only
+                and has not been validated on real vehicle data.
               </p>
             </div>
           </div>
@@ -1079,8 +1082,8 @@
 
       <p>
         Select Normal operation or one or more compatible fault conditions.
-        The same sample updates telemetry, ECU states, vehicle highlights,
-        charts, and diagnostics.
+        Telemetry changes gradually; the same sample updates ECU states,
+        vehicle highlights, charts, and rule diagnostics.
       </p>
 
       <div
@@ -1102,7 +1105,7 @@
 
           <span>
             <strong>Normal operation</strong>
-            <small>400 V · 35 A · 45 °C nominal</small>
+            <small>Stable baseline with simulated sensor noise</small>
           </span>
         </label>
 
@@ -1119,7 +1122,7 @@
 
           <span>
             <strong>Over-temperature</strong>
-            <small>Thermal system & BMS · approx. 85 °C</small>
+            <small>Temperature gradually increases · Thermal system & BMS</small>
           </span>
         </label>
 
@@ -1136,7 +1139,7 @@
 
           <span>
             <strong>Under-voltage</strong>
-            <small>Battery system & BMS · approx. 270 V</small>
+            <small>Voltage gradually decreases · Battery system & BMS</small>
           </span>
         </label>
 
@@ -1153,7 +1156,7 @@
 
           <span>
             <strong>Over-voltage</strong>
-            <small>Battery system & BMS · approx. 450 V</small>
+            <small>Voltage gradually increases · Battery system & BMS</small>
           </span>
         </label>
 
@@ -1170,7 +1173,7 @@
 
           <span>
             <strong>Over-current</strong>
-            <small>Motor controller & VCU · approx. 120 A</small>
+            <small>Current gradually increases · Motor controller & VCU</small>
           </span>
         </label>
       </div>

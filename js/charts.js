@@ -11,7 +11,7 @@
       color: '--cyan',
       axis: 'volts',
       min: 250,
-      max: 375,
+      max: 460,
       position: 'left'
     },
     {
@@ -21,7 +21,7 @@
       color: '--violet',
       axis: 'amps',
       min: 0,
-      max: 110,
+      max: 140,
       position: 'right'
     },
     {
@@ -31,7 +31,7 @@
       color: '--amber',
       axis: 'degrees',
       min: 20,
-      max: 85,
+      max: 110,
       position: 'right'
     }
   ];
@@ -274,12 +274,12 @@
 
     sparklines(readings) {
       document.querySelectorAll('[data-spark]').forEach(svg => {
-        const values = readings.map(
-          reading => reading[svg.dataset.spark]
-        );
+        const values = readings
+          .map(reading => reading[svg.dataset.spark])
+          .filter(Number.isFinite);
 
-        const minimum = Math.min(...values);
-        const maximum = Math.max(...values);
+        const minimum = values.length ? Math.min(...values) : 0;
+        const maximum = values.length ? Math.max(...values) : 0;
         const span = Math.max(maximum - minimum, .1);
 
         const path = values.map((value, index) => {

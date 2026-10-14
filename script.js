@@ -91,7 +91,7 @@
     ],
     'predictive-analytics': [
       'Predictive Analytics',
-      'Transparent demo diagnostics — no AI model connected'
+      'Synthetic-model failure probability and separate rule diagnostics'
     ],
     settings: [
       'Workspace Settings',
@@ -206,7 +206,19 @@ const source = new EV.ApiSource();
   }
 
   function renderReadings(rows, table) {
-    table.innerHTML = rows.map(r => `
+    table.innerHTML = rows.map(r => {
+      const prediction = r.prediction || {};
+      const probability = prediction.status === 'ready' &&
+        Number.isFinite(prediction.failure_probability)
+        ? (prediction.failure_probability * 100).toFixed(1) + '%'
+        : prediction.status === 'warming_up'
+          ? 'Warming up'
+          : 'Unavailable';
+      const modelCondition = Number.isFinite(r.health)
+        ? r.health.toFixed(1) + ' / 100'
+        : '—';
+
+      return `
       <tr>
         <td>
           <time datetime="${new Date(r.timestamp).toISOString()}">
@@ -217,16 +229,19 @@ const source = new EV.ApiSource();
         <td>${r.voltage.toFixed(1)} V</td>
         <td>${r.current.toFixed(1)} A</td>
         <td>${r.temperature.toFixed(1)} °C</td>
-        <td>${r.health} / 100</td>
+        <td>${escape(modelCondition)}</td>
+        <td>${escape(probability)}</td>
+        <td>${escape(scenarioLabel(r.scenario || 'normal'))}</td>
         <td>
           <span class="pill ${escape(r.diagnostics.severity)}">
             ${escape(r.diagnostics.label)}
           </span>
         </td>
       </tr>
-    `).join('') || `
+    `;
+    }).join('') || `
       <tr>
-        <td colspan="6" class="empty">
+        <td colspan="8" class="empty">
           No readings match this filter.
         </td>
       </tr>
@@ -265,6 +280,9 @@ const source = new EV.ApiSource();
           : [
               item.scenario,
               item.diagnostics.label,
+              item.prediction && item.prediction.status,
+              item.prediction &&
+                item.prediction.failure_probability,
               item.seeded ? 'seeded' : 'session'
             ];
 
@@ -334,8 +352,10 @@ const source = new EV.ApiSource();
           <th>Voltage</th>
           <th>Current</th>
           <th>Temperature</th>
-          <th>Health · demo</th>
+          <th>Model condition</th>
+          <th>Failure probability · 5 min</th>
           <th>Scenario</th>
+          <th>Rule diagnostics</th>
         </tr>
       `;
 
@@ -381,12 +401,16 @@ const source = new EV.ApiSource();
     const d = r.diagnostics;
 
     ['voltage', 'current', 'temperature', 'health'].forEach(key => {
-      animations.number(
-        $('value-' + key),
-        r[key],
-        key === 'health' ? 0 : 1,
-        initialRender
-      );
+      if (Number.isFinite(r[key])) {
+        animations.number(
+          $('value-' + key),
+          r[key],
+          key === 'health' ? 1 : 1,
+          initialRender
+        );
+      } else {
+        $('value-' + key).textContent = '—';
+      }
 
       if (key !== 'health') {
         const delta = previous && previous[key]
@@ -409,32 +433,38 @@ const source = new EV.ApiSource();
     });
 
     const activeCodes = new Set((d.faults || []).map(fault => fault.code));
-    const activeMetrics = new Set(
-      [...activeCodes].map(code => ({
+    const metricFaults = (d.faults || []).reduce((faults, fault) => {
+      const metric = ({
         'under-voltage': 'voltage',
         'low-voltage': 'voltage',
         'over-voltage': 'voltage',
         'over-current': 'current',
         'over-temperature': 'temperature'
-      }[code])).filter(Boolean)
-    );
+      })[fault.code];
+
+      if (metric) {
+        faults[metric] = faults[metric] || [];
+        faults[metric].push(fault);
+      }
+
+      return faults;
+    }, {});
 
     document.querySelectorAll('.metric-card').forEach(card => {
-      const affected =
-        activeMetrics.has(card.dataset.metric) ||
-        (
-          card.dataset.metric === 'health' &&
-          activeCodes.size > 0
-        );
+      const faults = metricFaults[card.dataset.metric] || [];
+      const affected = faults.length > 0;
+      const metricSeverity = faults.some(
+        fault => fault.severity === 'critical'
+      ) ? 'critical' : 'warning';
 
       card.classList.toggle(
         'is-fault',
-        affected && d.severity === 'warning'
+        affected && metricSeverity === 'warning'
       );
 
       card.classList.toggle(
         'is-critical',
-        affected && d.severity === 'critical'
+        affected && metricSeverity === 'critical'
       );
 
       if (card.dataset.metric !== 'health') {
@@ -484,46 +514,78 @@ const source = new EV.ApiSource();
         (d.code === 'normal' ? 'circle-check' : 'triangle-alert') +
         '"></i>';
 
-      $('risk-label').textContent = d.severity === 'normal'
-        ? 'Low risk'
-        : d.severity === 'critical'
-          ? 'High demo risk'
-          : 'Elevated demo risk';
-
-      const riskColor = d.severity === 'normal'
-        ? 'green'
-        : d.severity === 'critical'
-          ? 'red'
-          : 'amber';
-
-      $('risk-label').style.color = `var(--${riskColor})`;
-      $('risk-progress').style.stroke = `var(--${riskColor})`;
-
-      $('risk-explanation').textContent = d.code === 'normal'
-        ? 'Normal demo scenario. No immediate simulated fault.'
-        : d.label + ' scenario active. Illustrative score only.';
-
-      $('risk-value').innerHTML = d.risk + '<span>%</span>';
-      $('overview-health').textContent = d.health + '%';
-
-      $('risk-ring-container').setAttribute(
-        'aria-label',
-        'Simulated risk ' +
-          d.risk +
-          ' percent. Not an AI prediction.'
-      );
-
-      $('health-ring-container').setAttribute(
-        'aria-label',
-        'Illustrative demo health ' + d.health + ' percent.'
-      );
-
-      animations.ring($('risk-progress'), d.risk);
-      animations.ring($('health-progress'), d.health);
-
       lastDiagnostic = d.code;
 
       icons();
+    }
+
+    const prediction = r.prediction || {};
+    const predictionReady =
+      prediction.status === 'ready' &&
+      Number.isFinite(prediction.failure_probability);
+
+    if (predictionReady) {
+      const probability = Math.min(
+        1,
+        Math.max(0, prediction.failure_probability)
+      );
+      const probabilityPercent = probability * 100;
+      const condition = 100 - probabilityPercent;
+      const horizonMinutes = prediction.horizon_seconds / 60;
+
+      $('risk-value').innerHTML =
+        probabilityPercent.toFixed(1) + '<span>%</span>';
+      $('risk-label').textContent = 'Failure probability · next 5 min';
+      $('risk-label').className = 'risk-label';
+      $('risk-explanation').textContent =
+        (prediction.model && prediction.model.name
+          ? prediction.model.name
+          : 'Trained synthetic-data model') +
+        ' · based on ' +
+        prediction.history_count +
+        ' recent readings. Fixed forecast horizon; not a countdown.';
+      $('risk-progress').style.stroke = 'var(--cyan)';
+      $('overview-health').textContent = condition.toFixed(1) + '%';
+      $('health-ring-container').setAttribute(
+        'aria-label',
+        'Model-derived condition index ' + condition.toFixed(1) + ' percent.'
+      );
+      $('risk-ring-container').setAttribute(
+        'aria-label',
+        'Model-predicted failure probability within ' +
+          horizonMinutes +
+          ' minutes: ' +
+          probabilityPercent.toFixed(1) +
+          ' percent.'
+      );
+      animations.ring($('risk-progress'), probabilityPercent);
+      animations.ring($('health-progress'), condition);
+    } else {
+      const unavailable = prediction.status === 'unavailable';
+      const statusText = unavailable ? 'Model unavailable' : 'Warming up';
+      $('risk-value').innerHTML = '—<span></span>';
+      $('risk-label').textContent = 'Failure probability · next 5 min';
+      $('risk-label').className = 'risk-label';
+      $('risk-explanation').textContent = unavailable
+        ? (prediction.message || 'Train the model to enable predictions.') +
+          ' Fixed five-minute forecast horizon; not a countdown.'
+        : (prediction.history_count || 0) +
+          ' / ' +
+          (prediction.window_size || 30) +
+          ' readings collected for the model window. Fixed five-minute ' +
+          'forecast horizon; not a countdown.';
+      $('risk-progress').style.stroke = 'var(--faint)';
+      $('overview-health').textContent = '—';
+      $('health-ring-container').setAttribute(
+        'aria-label',
+        'Model-derived condition index unavailable.'
+      );
+      $('risk-ring-container').setAttribute(
+        'aria-label',
+        'Failure prediction ' + statusText.toLowerCase() + '.'
+      );
+      animations.ring($('risk-progress'), 0);
+      animations.ring($('health-progress'), 0);
     }
 
     $('session-state').textContent = state.running

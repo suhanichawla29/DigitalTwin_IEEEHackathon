@@ -3,6 +3,7 @@
 
   const EV = root.EV = root.EV || {};
   const API_URL = 'http://127.0.0.1:8000/api/readings';
+  const RESET_URL = 'http://127.0.0.1:8000/api/reset';
 
   // Map frontend scenario IDs to Python API scenario IDs.
   const SCENARIO_MAP = {
@@ -17,7 +18,11 @@
     over_voltage: 'over_voltage',
     over_current: 'over_current',
     over_temperature: 'over_temperature',
-    multiple_faults: 'multiple_faults'
+    multiple_faults: 'multiple_faults',
+    'gradual-degradation': 'gradual_degradation',
+    'severe-degradation': 'severe_degradation',
+    gradual_degradation: 'gradual_degradation',
+    severe_degradation: 'severe_degradation'
   };
 
   function mapScenario(scenario) {
@@ -82,6 +87,26 @@
     return data;
   }
 
+  async function resetEpisode() {
+    const response = await fetch(RESET_URL, { method: 'POST' });
+    if (response.ok) return;
+
+    let message = 'Failed to reset the simulation episode';
+    try {
+      const body = await response.json();
+      const detail = body.detail?.message || body.detail || body.error;
+      if (detail) {
+        message = typeof detail === 'string'
+          ? detail
+          : JSON.stringify(detail);
+      }
+    } catch (_) {
+      // Keep the fallback error message.
+    }
+
+    throw new Error(message);
+  }
+
   class ApiSource {
     constructor() {
       this.running = false;
@@ -97,6 +122,8 @@
       this.lastFaultKey = '';
       this.pendingTick = false;
       this.pendingForce = false;
+      this.resetting = false;
+      this.resumeAfterReset = false;
     }
 
     subscribe(callback) {
@@ -107,6 +134,12 @@
     }
 
     async tick(force = false) {
+      if (this.resetting) {
+        this.pendingTick = true;
+        this.pendingForce = this.pendingForce || force;
+        return;
+      }
+
       if (!this.running && !force) return;
 
       // Queue a new request if one is already running.
@@ -153,15 +186,6 @@
             'No diagnostic faults detected.'
           );
 
-        // Illustrative demo scores, not real vehicle predictions.
-        const health = hasFaults
-          ? (severity === 'critical' ? 45 : 70)
-          : 92;
-
-        const risk = hasFaults
-          ? (severity === 'critical' ? 85 : 55)
-          : 8;
-
         const codeMap = {
           'over-temperature': 'over-temperature',
           'over-current': 'over-current',
@@ -182,8 +206,6 @@
           label,
           severity,
           description,
-          risk,
-          health,
           faults: apiFaults,
 
           systems: {
@@ -220,12 +242,30 @@
           }
         };
 
+        const prediction = raw.prediction || {
+          status: 'unavailable',
+          history_count: 0,
+          window_size: 30,
+          failure_probability: null,
+          horizon_seconds: 300,
+          message: 'Prediction metadata was not returned by the API.'
+        };
+        const timestamp = Number(raw.timestamp);
+        const probability = prediction.status === 'ready' &&
+          Number.isFinite(prediction.failure_probability)
+          ? prediction.failure_probability
+          : null;
+        const health = probability === null
+          ? null
+          : (1 - probability) * 100;
+
         const reading = {
-          timestamp: Date.now(),
+          timestamp: timestamp * 1000,
           voltage: Number(raw.voltage),
           current: Number(raw.current),
           temperature: Number(raw.temperature),
           health,
+          prediction,
 
           // Preserve frontend scenario IDs for the dashboard history.
           scenario: requestedScenario,
@@ -236,9 +276,18 @@
         };
 
         if (
+          !Number.isFinite(timestamp) ||
           !Number.isFinite(reading.voltage) ||
           !Number.isFinite(reading.current) ||
-          !Number.isFinite(reading.temperature)
+          !Number.isFinite(reading.temperature) ||
+          (
+            prediction.status === 'ready' &&
+            probability === null
+          ) ||
+          (
+            probability !== null &&
+            (probability < 0 || probability > 1)
+          )
         ) {
           throw new Error('API returned invalid readings');
         }
@@ -316,6 +365,11 @@
       } finally {
         this.busy = false;
 
+        if (this.resetting) {
+          this.performReset();
+          return;
+        }
+
         // If the scenario changed during a request, fetch it now.
         if (this.pendingTick && (this.running || this.pendingForce)) {
           const force = this.pendingForce;
@@ -329,6 +383,11 @@
     start() {
       if (this.running) return;
 
+      if (this.resetting) {
+        this.resumeAfterReset = true;
+        return;
+      }
+
       this.running = true;
       this.tick();
 
@@ -339,6 +398,9 @@
 
     pause() {
       this.running = false;
+      if (this.resetting) {
+        this.resumeAfterReset = false;
+      }
       if (!this.pendingForce) {
         this.pendingTick = false;
       }
@@ -361,7 +423,44 @@
       this.legacyScenario = null;
       this.lastFaultKey = '';
 
-      this.start();
+      this.resetting = true;
+      this.resumeAfterReset = true;
+      if (!this.busy) {
+        this.performReset();
+      }
+    }
+
+    async performReset() {
+      if (!this.resetting || this.busy) return;
+
+      try {
+        await resetEpisode();
+      } catch (error) {
+        this.resetting = false;
+        this.resumeAfterReset = false;
+        console.error('EV API reset error:', error);
+        this.listeners.forEach(callback => callback({
+          current: this.current,
+          readings: [...this.readings],
+          events: [...this.events],
+          running: this.running
+        }, { type: 'error', error }));
+        return;
+      }
+
+      this.readings = [];
+      this.events = [];
+      this.current = null;
+      this.lastFaultKey = '';
+      this.resetting = false;
+      if (this.resumeAfterReset) {
+        this.resumeAfterReset = false;
+        this.start();
+      } else if (this.pendingForce) {
+        this.pendingForce = false;
+        this.pendingTick = false;
+        this.tick(true);
+      }
     }
 
     setScenario(scenario) {
@@ -370,6 +469,17 @@
       const apiScenario = mapScenario(scenario);
 
       if (apiScenario === 'multiple_faults') {
+        this.scenarios = [];
+        this.scenario = scenario;
+        this.legacyScenario = apiScenario;
+        this.tick(true);
+        return;
+      }
+
+      if ([
+        'gradual_degradation',
+        'severe_degradation'
+      ].includes(apiScenario)) {
         this.scenarios = [];
         this.scenario = scenario;
         this.legacyScenario = apiScenario;
@@ -415,6 +525,7 @@
     report() {
       return {
         source: 'Python FastAPI — simulated CAN',
+        predictionModel: this.current?.prediction?.model || null,
         readings: [...this.readings],
         events: [...this.events]
       };

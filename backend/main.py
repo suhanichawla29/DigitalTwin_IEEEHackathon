@@ -2,8 +2,10 @@
 from pathlib import Path
 import sys
 import time
-import math
 import random
+import threading
+import math
+import os
 from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
@@ -14,6 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from can_decoder import decode_can_frame
 from diagnostics import diagnose
+from predictor import (
+    FailurePredictor,
+    HORIZON_SECONDS,
+)
 
 app = FastAPI(title="EV Digital Twin API")
 
@@ -30,52 +36,10 @@ app.add_middleware(
 # Simulated sensor noise
 # --------------------------------------------------
 
-_start_time = time.time()
 _sample_count = 0
-
-BASE_VOLTAGE = 400.0
-BASE_CURRENT = 35.0
-BASE_TEMPERATURE = 45.0
-
-
-def gaussian_noise(sigma):
-    """Simulate small sensor measurement variations."""
-    return random.gauss(0, sigma)
-
-
-def low_frequency_drift(t, freq=0.05, amplitude=0.5):
-    """Simulate slow changes in sensor readings."""
-    return amplitude * math.sin(2 * math.pi * freq * t)
-
-
-def generate_realistic_reading():
-    """Generate simulated healthy readings with small variations."""
-    t = time.time() - _start_time
-
-    voltage = (
-        BASE_VOLTAGE
-        + gaussian_noise(0.5)
-        + low_frequency_drift(t, amplitude=0.4)
-    )
-
-    current = (
-        BASE_CURRENT
-        + gaussian_noise(0.4)
-        + low_frequency_drift(t, freq=0.03, amplitude=0.3)
-    )
-
-    temperature = (
-        BASE_TEMPERATURE
-        + gaussian_noise(0.2)
-        + low_frequency_drift(t, freq=0.02, amplitude=0.5)
-    )
-
-    voltage = max(0, min(1000, voltage))
-    current = max(0, min(1000, current))
-    temperature = max(-40, min(200, temperature))
-
-    return round(voltage, 2), round(current, 2), round(temperature, 2)
-
+SIMULATION_SPEED = float(os.environ.get("EV_SIMULATION_SPEED", "1.0"))
+if not math.isfinite(SIMULATION_SPEED) or SIMULATION_SPEED <= 0:
+    raise ValueError("EV_SIMULATION_SPEED must be a positive finite number")
 
 # --------------------------------------------------
 # CAN frame encoding
@@ -105,11 +69,24 @@ def make_demo_frame(voltage, current, temperature):
 
 SCENARIOS = {
     "normal": (400, 35, 45),
+    "gradual_degradation": (390, 42, 52),
+    "severe_degradation": (340, 75, 70),
     "low_voltage": (270, 35, 45),
     "over_voltage": (450, 35, 45),
     "over_current": (400, 120, 45),
     "over_temperature": (400, 35, 85),
     "multiple_faults": (270, 120, 85),
+}
+
+FAILURE_SCENARIOS = {
+    "normal",
+    "gradual_degradation",
+    "severe_degradation",
+    "low_voltage",
+    "over_voltage",
+    "over_current",
+    "over_temperature",
+    "multiple_faults",
 }
 
 FAULT_SCENARIOS = {
@@ -122,6 +99,111 @@ FAULT_SCENARIOS = {
         "over_temperature",
     }
 }
+
+
+class SimulationState:
+    """Persistent gradual telemetry state for one independent demo episode."""
+
+    NOISE = {
+        "voltage": 0.55,
+        "current": 0.4,
+        "temperature": 0.2,
+    }
+
+    def __init__(self, seed=None):
+        self.random = random.Random(seed)
+        self.reset()
+
+    def reset(self):
+        self.baseline = {
+            "voltage": self.random.uniform(395, 405),
+            "current": self.random.uniform(32, 38),
+            "temperature": self.random.uniform(42, 48),
+        }
+        self.values = dict(self.baseline)
+        self.scenario = "normal"
+        self.faults = ()
+        self.sample_index = 0
+
+    def select(self, scenario, faults):
+        if scenario not in FAILURE_SCENARIOS:
+            raise ValueError(f"Unsupported simulation scenario: {scenario}")
+
+        if scenario == "multiple_faults":
+            faults = (
+                "low_voltage",
+                "over_current",
+                "over_temperature",
+            )
+        elif scenario in FAULT_SCENARIOS:
+            faults = (scenario,)
+
+        if scenario in {"normal", "gradual_degradation", "severe_degradation"}:
+            faults = ()
+
+        self.scenario = scenario
+        self.faults = tuple(faults)
+
+    def _rates(self):
+        if self.scenario == "gradual_degradation":
+            rates = {"voltage": -0.18, "current": 0.12, "temperature": 0.07}
+            return self._scaled_rates(rates)
+        if self.scenario == "severe_degradation":
+            rates = {"voltage": -0.72, "current": 0.48, "temperature": 0.28}
+            return self._scaled_rates(rates)
+
+        rates = {"voltage": 0.0, "current": 0.0, "temperature": 0.0}
+        if "low_voltage" in self.faults:
+            rates["voltage"] = -0.9
+        if "over_voltage" in self.faults:
+            rates["voltage"] = 0.45
+        if "over_current" in self.faults:
+            rates["current"] = 0.65
+        if "over_temperature" in self.faults:
+            rates["temperature"] = 0.4
+        return self._scaled_rates(rates)
+
+    @staticmethod
+    def _scaled_rates(rates):
+        return {
+            signal: rate * SIMULATION_SPEED
+            for signal, rate in rates.items()
+        }
+
+    def advance(self):
+        rates = self._rates()
+        reading = {}
+        for signal, value in self.values.items():
+            rate = rates[signal]
+            if rate == 0:
+                # Recover gradually after switching back to Normal.
+                difference = self.baseline[signal] - value
+                recovery_limit = 1.2 * SIMULATION_SPEED
+                rate = max(
+                    -recovery_limit,
+                    min(
+                        recovery_limit,
+                        difference * 0.04 * SIMULATION_SPEED,
+                    ),
+                )
+
+            self.values[signal] = max(
+                0.0,
+                min(1000.0, value + rate),
+            )
+            reading[signal] = round(
+                self.values[signal] +
+                self.random.gauss(0, self.NOISE[signal]),
+                2,
+            )
+
+        self.sample_index += 1
+        return reading
+
+
+_episode_lock = threading.RLock()
+simulation = SimulationState()
+predictor = FailurePredictor()
 
 
 # --------------------------------------------------
@@ -151,16 +233,28 @@ def get_readings(
       /api/readings?scenario=over_temperature
       /api/readings?scenario=multiple_faults
       /api/readings?faults=low_voltage&faults=over_current
+      /api/readings?scenario=gradual_degradation
     """
     global _sample_count
 
-    if faults is not None:
-        if scenario is not None:
-            raise HTTPException(
-                status_code=400,
-                detail="Use either scenario or faults, not both.",
-            )
+    scenario_was_provided = scenario is not None
+    scenario = scenario or "normal"
+    if scenario not in SCENARIOS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": "Unknown scenario",
+                "available_scenarios": list(SCENARIOS.keys()),
+            },
+        )
 
+    if faults is not None and scenario_was_provided:
+        raise HTTPException(
+            status_code=400,
+            detail="Use either scenario or faults, not both.",
+        )
+
+    if faults is not None:
         if len(faults) != len(set(faults)):
             raise HTTPException(
                 status_code=400,
@@ -178,73 +272,69 @@ def get_readings(
                 },
             )
 
-        if "low_voltage" in faults and "over_voltage" in faults:
+        if {"low_voltage", "over_voltage"}.issubset(faults):
             raise HTTPException(
                 status_code=400,
-                detail="Low-voltage and over-voltage cannot occur in the same sample.",
+                detail="Low-voltage and over-voltage cannot be selected together.",
             )
 
-        if faults:
-            values = [400, 35, 45]
-            for fault in faults:
-                fault_values = FAULT_SCENARIOS[fault]
-                if fault in {"low_voltage", "over_voltage"}:
-                    values[0] = fault_values[0]
-                elif fault == "over_current":
-                    values[1] = fault_values[1]
-                elif fault == "over_temperature":
-                    values[2] = fault_values[2]
-
-            voltage, current, temperature = values
-            scenario_name = faults[0] if len(faults) == 1 else "combined"
-        else:
-            voltage, current, temperature = generate_realistic_reading()
-            scenario_name = "normal"
-    else:
-        scenario = scenario or "normal"
-
-        if scenario not in SCENARIOS:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": "Unknown scenario",
-                    "available_scenarios": list(SCENARIOS.keys()),
-                },
+    with _episode_lock:
+        if faults is not None:
+            selected_scenario = (
+                "normal" if not faults
+                else faults[0] if len(faults) == 1
+                else "combined"
             )
-
-        if scenario == "normal":
-            # Healthy baseline with small sensor variations
-            voltage, current, temperature = generate_realistic_reading()
+            state_scenario = (
+                "normal" if not faults
+                else "multiple_faults" if set(faults) == {
+                    "low_voltage",
+                    "over_current",
+                    "over_temperature",
+                }
+                else "combined"
+            )
+            if state_scenario == "combined":
+                simulation.scenario = state_scenario
+                simulation.faults = tuple(faults)
+            else:
+                simulation.select(state_scenario, faults)
         else:
-            # Fixed values make fault scenarios repeatable
-            voltage, current, temperature = SCENARIOS[scenario]
+            selected_scenario = scenario
+            if scenario == "combined":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Combined faults must be supplied as repeated faults parameters.",
+                )
+            simulation.select(scenario, ())
 
-        scenario_name = scenario
+        _sample_count += 1
+        values = simulation.advance()
 
-    _sample_count += 1
-
-    # Encode simulated readings into a CAN frame
-    frame = make_demo_frame(voltage, current, temperature)
-
-    # Decode the frame using the existing DBC decoder
-    readings = decode_can_frame(0x100, frame)
-
-    # Run the existing Python diagnostic rules
-    diagnostics = diagnose(
-        voltage=readings["voltage"],
-        current=readings["current"],
-        temperature=readings["temperature"],
-    )
+        # The gradual synthetic sensors retain the project's CAN encoding path.
+        frame = make_demo_frame(
+            values["voltage"],
+            values["current"],
+            values["temperature"],
+        )
+        readings = decode_can_frame(0x100, frame)
+        diagnostics = diagnose(
+            voltage=readings["voltage"],
+            current=readings["current"],
+            temperature=readings["temperature"],
+        )
+        prediction = predictor.add_reading(readings)
 
     return {
         **readings,
         "ecu_status": diagnostics["status"],
         "diagnostics": diagnostics,
         "source": "SIMULATED_CAN",
-        "scenario": scenario_name,
+        "scenario": selected_scenario,
         "faults": faults if faults is not None else [],
         "sample_index": _sample_count,
         "timestamp": time.time(),
+        "prediction": prediction,
     }
 
 
@@ -268,4 +358,27 @@ def get_scenarios():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "model_status": "ready" if predictor.model is not None else "unavailable",
+        "model": predictor.metadata,
+        "model_error": predictor.model_error,
+        "forecast_horizon_seconds": HORIZON_SECONDS,
+    }
+
+
+@app.post("/api/reset")
+def reset_simulation():
+    """Start a new independent episode and clear the predictor's rolling window."""
+    global _sample_count
+
+    with _episode_lock:
+        simulation.reset()
+        predictor.reset()
+        _sample_count = 0
+
+    return {
+        "status": "reset",
+        "model_status": "ready" if predictor.model is not None else "unavailable",
+        "history_count": 0,
+    }

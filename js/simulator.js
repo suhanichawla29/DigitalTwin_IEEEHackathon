@@ -41,8 +41,6 @@
       voltage: 348,
       current: 32,
       temperature: 36,
-      health: 92,
-      risk: 12,
       severity: 'normal',
       systems: [],
       description: 'All simulated systems are within demo limits.'
@@ -53,8 +51,6 @@
       voltage: 344,
       current: 37,
       temperature: 72,
-      health: 68,
-      risk: 64,
       severity: 'warning',
       systems: ['thermal', 'bms'],
       description:
@@ -67,8 +63,6 @@
       voltage: 276,
       current: 40,
       temperature: 38,
-      health: 61,
-      risk: 72,
       severity: 'warning',
       systems: ['battery', 'bms'],
       description:
@@ -81,8 +75,6 @@
       voltage: 338,
       current: 96,
       temperature: 44,
-      health: 48,
-      risk: 86,
       severity: 'critical',
       systems: ['motor', 'vcu'],
       description:
@@ -120,8 +112,6 @@
       label: config.label,
       severity: config.severity,
       description: config.description,
-      risk: config.risk,
-      health: config.health,
       systems,
       source: 'illustrative-demo-rules',
       isPrediction: false
@@ -186,7 +176,15 @@
       };
 
       reading.diagnostics = classifyDemo(reading);
-      reading.health = reading.diagnostics.health;
+      reading.health = null;
+      reading.prediction = {
+        status: 'unavailable',
+        history_count: 0,
+        window_size: 30,
+        failure_probability: null,
+        horizon_seconds: 300,
+        message: 'The local demo source does not run a trained model.'
+      };
 
       return reading;
     }
@@ -434,16 +432,14 @@
 
         disclaimer:
           'SIMULATED PROTOTYPE. No physical ECU or CAN connection. ' +
-          'Synthetic readings. Demo risk and health are illustrative ' +
-          'lookup values, not AI predictions or safety assessments.',
+          'Synthetic readings. The local demo source does not produce ' +
+          'trained-model predictions or safety assessments.',
 
         units: {
           timestamp: 'Unix milliseconds UTC',
           voltage: 'V',
           current: 'A',
-          temperature: 'degC',
-          health: 'illustrative score /100',
-          risk: 'illustrative percent, not a probability'
+          temperature: 'degC'
         },
 
         sampling: {
