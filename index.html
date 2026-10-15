@@ -675,7 +675,7 @@
           </div>
 
           <div class="chart-footer">
-            <span>
+            <span id="chart-sampling-note">
               2 s sampling
               <span>·</span>
               independently scaled, labelled axes
@@ -802,6 +802,178 @@
           </button>
         </section>
       </div>
+
+      <section
+        class="panel manual-lab-panel"
+        id="manual-fault-simulator-lab"
+        aria-labelledby="manual-fault-lab-title"
+      >
+        <div class="panel-header">
+          <div>
+            <h2 id="manual-fault-lab-title">EV Fault Simulator Lab</h2>
+            <p>Submit supported readings through the existing diagnostic, CAN, model, and persistence pipeline</p>
+          </div>
+          <label class="dashboard-source-control" for="dashboard-source-mode">
+            <span>Dashboard data source</span>
+            <select id="dashboard-source-mode">
+              <option value="simulator">Live Simulator</option>
+              <option value="manual">Manual Input</option>
+              <option value="preset_simulated">Preset Examples</option>
+            </select>
+          </label>
+        </div>
+        <div class="manual-source-banner" aria-live="polite">
+          <span id="manual-source-status" class="pill normal">LIVE SIMULATOR</span>
+          <span id="manual-source-timestamp">Displaying the existing simulated CAN feed.</span>
+          <span>Manual values are user-supplied; preset values are simulated examples. No physical vehicle connection.</span>
+        </div>
+        <div class="manual-lab-tabs" role="tablist" aria-label="Manual lab input mode">
+          <button class="manual-lab-tab active" type="button" role="tab" aria-selected="true" data-manual-mode="single">Single reading</button>
+          <button class="manual-lab-tab" type="button" role="tab" aria-selected="false" data-manual-mode="batch">Batch CSV</button>
+          <button class="manual-lab-tab" type="button" role="tab" aria-selected="false" data-manual-mode="preset">Preset scenarios</button>
+        </div>
+        <section class="manual-mode-panel" id="manual-mode-single" role="tabpanel">
+          <form id="manual-reading-form" novalidate>
+            <div class="manual-fields-grid">
+              <label>Battery voltage <span>(V)</span><input name="voltage" type="number" min="0" max="1000" step="any" inputmode="decimal" placeholder="0–1000"></label>
+              <label>Battery current <span>(A)</span><input name="current" type="number" min="0" max="1000" step="any" inputmode="decimal" placeholder="0–1000"></label>
+              <label>Battery temperature <span>(°C)</span><input name="temperature" type="number" min="-40" max="200" step="any" inputmode="decimal" placeholder="-40–200"></label>
+              <label>Timestamp <span>(defaults to now)</span><input name="timestamp" type="datetime-local"></label>
+              <label>CAN ID <span>(optional, e.g. 0x100)</span><input name="can_id" type="text" autocomplete="off" placeholder="Optional"></label>
+              <label>Raw CAN payload <span>(optional, hex bytes)</span><input name="raw_payload" type="text" autocomplete="off" placeholder="AA BB CC …"></label>
+            </div>
+            <p class="manual-input-note">Enter at least one supported signal; leave a field blank only when that sensor is unavailable. SOC and vehicle speed are not in the current telemetry schema. DBC physical ranges: voltage/current 0–1000; temperature −40–200 °C.</p>
+            <div class="manual-actions">
+              <button class="button primary" id="manual-submit-single" type="submit">Submit reading</button>
+              <button class="button" id="manual-reset-form" type="button">Reset form</button>
+              <button class="text-button" id="manual-clear-results" type="button">Clear results</button>
+            </div>
+          </form>
+        </section>
+        <section class="manual-mode-panel" id="manual-mode-batch" role="tabpanel" hidden>
+          <label class="manual-csv-label" for="manual-csv-input">
+            Paste CSV or choose a CSV file
+            <input id="manual-csv-file" type="file" accept=".csv,text/csv">
+            <textarea id="manual-csv-input" rows="7" spellcheck="false" placeholder="timestamp,voltage_V,current_A,temperature_C,can_id,raw_payload"></textarea>
+          </label>
+          <p class="manual-input-note">Supported headers: timestamp, voltage_V, current_A, temperature_C, can_id, raw_payload. Timestamp must be ISO-8601 or Unix seconds. Empty sensor cells are allowed; unknown columns and duplicate timestamps are reported.</p>
+          <div class="manual-actions">
+            <button class="button" id="manual-preview-csv" type="button">Validate and preview</button>
+            <button class="button primary" id="manual-submit-batch" type="button" disabled>Submit checked valid rows</button>
+          </div>
+          <p id="manual-csv-summary" class="manual-inline-status" aria-live="polite">Preview is empty.</p>
+          <div class="manual-preview-scroll">
+            <table class="manual-preview-table">
+              <thead><tr><th>Use</th><th>CSV row</th><th>Timestamp</th><th>Readings / CAN</th><th>Validation</th></tr></thead>
+              <tbody id="manual-preview-rows"><tr><td colspan="5" class="empty">Paste or upload CSV, then validate it.</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="manual-mode-panel" id="manual-mode-preset" role="tabpanel" hidden>
+          <div class="manual-preset-controls">
+            <label for="manual-preset-select">Editable simulated example
+              <select id="manual-preset-select">
+                <option value="">Choose a template…</option>
+                <option value="normal">Normal operation</option>
+                <option value="rising-temperature">Rising battery temperature</option>
+                <option value="voltage-drop">Battery voltage drop</option>
+                <option value="missing-sensor">Missing or failed sensor</option>
+                <option value="can-activity">Abnormal CAN message activity (CSV burst)</option>
+              </select>
+            </label>
+            <span class="pill warning">SIMULATED EXAMPLE · editable before submit</span>
+          </div>
+          <p id="manual-preset-description" class="manual-input-note">Choose a template to populate editable fields. Templates are examples, not measured vehicle data.</p>
+          <div id="manual-preset-single-fields" class="manual-fields-grid">
+            <label>Battery voltage <span>(V)</span><input id="manual-preset-voltage" type="number" min="0" max="1000" step="any"></label>
+            <label>Battery current <span>(A)</span><input id="manual-preset-current" type="number" min="0" max="1000" step="any"></label>
+            <label>Battery temperature <span>(°C)</span><input id="manual-preset-temperature" type="number" min="-40" max="200" step="any"></label>
+            <label>Timestamp<input id="manual-preset-timestamp" type="datetime-local"></label>
+          </div>
+          <div id="manual-preset-batch-fields" hidden>
+            <label class="manual-csv-label" for="manual-preset-csv">Editable CAN activity burst CSV<textarea id="manual-preset-csv" rows="7" spellcheck="false"></textarea></label>
+            <p class="manual-input-note">One valid DBC frame per timestamp. The rate rule is evaluated from these actual decoded rows.</p>
+          </div>
+          <div class="manual-actions">
+            <button class="button primary" id="manual-submit-preset" type="button" disabled>Submit simulated example</button>
+          </div>
+        </section>
+        <section class="manual-result-section" aria-live="polite" aria-labelledby="manual-result-title">
+          <div class="manual-section-heading">
+            <h3 id="manual-result-title">Manual Diagnosis</h3>
+            <span id="manual-result-status" class="pill offline">No submission yet</span>
+          </div>
+          <p id="manual-result-empty">Submit a reading or validated CSV to see the server-side assessment, rules, model compatibility, and evidence here.</p>
+          <div id="manual-result-content" hidden></div>
+        </section>
+        <section class="manual-history-section" aria-labelledby="manual-history-title">
+          <div class="manual-section-heading">
+            <h3 id="manual-history-title">Manual submissions &amp; diagnostic history</h3>
+            <label for="manual-history-source">History source
+              <select id="manual-history-source">
+                <option value="manual">Manual input</option>
+                <option value="preset_simulated">Preset simulated</option>
+              </select>
+            </label>
+          </div>
+          <div class="manual-preview-scroll">
+            <table class="manual-preview-table">
+              <thead><tr><th>Time</th><th>Source</th><th>Assessment</th><th>EV model</th><th>Triggered rules / explanation</th></tr></thead>
+              <tbody id="manual-history-rows"><tr><td colspan="5" class="empty">No saved submissions for this source.</td></tr></tbody>
+            </table>
+          </div>
+          <p id="manual-history-note" class="manual-input-note">Manual submissions are kept separate from live simulator telemetry and are not deleted by Clear results.</p>
+        </section>
+      </section>
+
+      <section
+        class="panel fault-lab-panel"
+        id="fault-simulation-lab"
+        aria-labelledby="fault-lab-title"
+      >
+        <div class="panel-header">
+          <div>
+            <h2 id="fault-lab-title">Deterministic Live Simulator Scenarios</h2>
+            <p>Reproducible fault injection through the simulated telemetry and CAN pipeline</p>
+          </div>
+          <span class="can-simulated-badge">
+            <span class="status-dot"></span>
+            SIMULATED ONLY
+          </span>
+        </div>
+        <div class="fault-lab-controls">
+          <label for="fault-lab-scenario">
+            <span>Scenario</span>
+            <select id="fault-lab-scenario">
+              <option value="battery_temperature_rise">Battery temperature rise</option>
+              <option value="battery_voltage_drop">Battery voltage drop</option>
+              <option value="temperature_sensor_failure">Temperature sensor failure / missing reading</option>
+              <option value="abnormal_can_activity">Abnormal CAN message activity</option>
+            </select>
+          </label>
+          <div class="fault-lab-buttons">
+            <button type="button" class="button primary" id="fault-lab-start">Start Scenario</button>
+            <button type="button" class="button" id="fault-lab-stop" disabled>Stop Scenario</button>
+            <button type="button" class="text-button" id="fault-lab-reset" disabled>Reset to Normal</button>
+          </div>
+          <span id="fault-lab-status" class="pill normal" aria-live="polite">Normal operation</span>
+        </div>
+        <div class="fault-lab-grid">
+          <section class="fault-lab-explanation" aria-live="polite">
+            <h3>Observed signals and detector explanation</h3>
+            <p id="fault-lab-explanation">Start a scenario to compare real simulated readings with their baseline and applicable rule.</p>
+            <p id="fault-lab-detector">Detector output will appear when the existing diagnostics evaluate a sample.</p>
+            <p id="fault-lab-recommendation" class="fault-lab-recommendation">Suggestions are illustrative and are not confirmed root causes.</p>
+          </section>
+          <section class="fault-lab-timeline" aria-live="polite">
+            <h3>Incident timeline</h3>
+            <ol id="fault-lab-timeline">
+              <li>Normal operation · waiting for a scenario.</li>
+            </ol>
+            <p id="fault-lab-delay">Detection delay will be calculated from scenario and detection timestamps.</p>
+          </section>
+        </div>
+      </section>
 
       <section
         class="panel multilevel-forecast"
@@ -965,12 +1137,11 @@
                 <th>Raw payload</th>
                 <th>Decoded signals</th>
                 <th>EV simulator anomaly</th>
-                <th>SynCAN</th>
                 <th>Decoder</th>
               </tr>
             </thead>
             <tbody id="can-history-table">
-              <tr><td colspan="10" class="empty">CAN message history is empty.</td></tr>
+              <tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>
             </tbody>
           </table>
         </div>

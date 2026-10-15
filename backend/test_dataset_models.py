@@ -6,9 +6,16 @@ from pathlib import Path
 
 import numpy as np
 from scipy.io import savemat
+from fastapi import HTTPException
 
 from battery_predictor import BatteryCapacityPredictor
-from main import _model_readiness, get_dataset_model_status
+from main import (
+    _model_readiness,
+    detect_syncan_anomaly,
+    get_dataset_model_status,
+    syncan_predictor,
+    syncan_offline_evaluation_status,
+)
 from syncan_predictor import (
     SIGNAL_COUNTS,
     SynCANPredictor,
@@ -244,6 +251,27 @@ class DatasetModelTests(unittest.TestCase):
             self.assertNotIn("failure_probability", result)
             self.assertTrue(np.isfinite(result["decision_score"]))
 
+            predictor.reset()
+            normal_result = None
+            for index in range(105):
+                result = predictor.score({
+                    "ID": "id1",
+                    "Time": index * 10,
+                    "Signal1_of_ID": 0.5 + index * 0.001,
+                    "Signal2_of_ID": 1.0 + index * 0.001,
+                })
+                if not result["is_anomaly"]:
+                    normal_result = result
+            self.assertIsNotNone(normal_result)
+            anomaly_result = predictor.score({
+                "ID": "id1",
+                "Time": 1050,
+                "Signal1_of_ID": 20.605,
+                "Signal2_of_ID": 1.105,
+            })
+            self.assertTrue(anomaly_result["is_anomaly"])
+            self.assertTrue(np.isfinite(anomaly_result["decision_score"]))
+
             evaluation = evaluate_saved_model(artifact, [test_zip])
             self.assertEqual(evaluation["source"], "ETAS SynCAN dataset")
             self.assertEqual(
@@ -273,6 +301,57 @@ class DatasetModelTests(unittest.TestCase):
                     "label_1_intrusion_predicted_normal"
                 ],
             )
+
+    def test_synCAN_api_accepts_compatible_rows_and_rejects_live_dbc_fields(self):
+        if not syncan_predictor.models:
+            self.assertTrue(syncan_predictor.reload())
+
+        syncan_predictor.reset()
+        compatible = detect_syncan_anomaly({
+            "ID": "id3",
+            "Time": 67_507_044.3081,
+            "Signal1_of_ID": 0.6,
+            "Signal2_of_ID": 1.0,
+        })
+        self.assertEqual(compatible["ID"], "id3")
+        self.assertFalse(compatible["is_anomaly"])
+
+        labelled_intrusion = detect_syncan_anomaly({
+            "ID": "id2",
+            "Time": 67_537_573.9491,
+            "Signal1_of_ID": 0.0,
+            "Signal2_of_ID": 0.28632014199679434,
+            "Signal3_of_ID": 0.504607285496,
+        })
+        self.assertTrue(labelled_intrusion["is_anomaly"])
+        self.assertTrue(np.isfinite(labelled_intrusion["decision_score"]))
+
+        with self.assertRaises(HTTPException) as raised:
+            detect_syncan_anomaly({
+                "can_id": "0x100",
+                "Voltage": 400.0,
+                "Current": 35.0,
+                "Temperature": 45.0,
+            })
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("Incompatible input ID '0x100'", raised.exception.detail)
+
+    def test_offline_evaluation_api_explains_dataset_and_model_labels(self):
+        status = syncan_offline_evaluation_status()
+        self.assertEqual(status["status"], "available")
+        self.assertEqual(
+            status["label_meaning"],
+            {
+                "0": "normal",
+                "1": "intrusion",
+                "model_prediction_-1": "anomaly",
+                "model_prediction_1": "normal",
+            },
+        )
+        self.assertEqual(
+            status["metrics"]["rows_evaluated"],
+            610294,
+        )
 
     def test_untrained_predictors_do_not_claim_ready(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -5,6 +5,8 @@
   const API_URL = 'http://127.0.0.1:8000/api/readings';
   const RESET_URL = 'http://127.0.0.1:8000/api/reset';
   const CAN_MESSAGES_URL = 'http://127.0.0.1:8000/api/can/messages';
+  const FAULT_LAB_URL = 'http://127.0.0.1:8000/api/fault-lab';
+  const MANUAL_LAB_URL = 'http://127.0.0.1:8000/api/manual';
 
   // Map frontend scenario IDs to Python API scenario IDs.
   const SCENARIO_MAP = {
@@ -81,7 +83,10 @@
 
     const data = await response.json();
 
-    if (data.error) {
+    if (
+      data.error &&
+      data.sensor_availability?.temperature !== false
+    ) {
       throw new Error(data.error);
     }
 
@@ -116,6 +121,50 @@
     return response.json();
   }
 
+  async function postFaultLabAction(action, payload = {}) {
+    const response = await fetch(FAULT_LAB_URL + '/' + action, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const detail = data.detail?.message || data.detail || data.error;
+      throw new Error(
+        typeof detail === 'string'
+          ? detail
+          : JSON.stringify(detail || 'Fault-lab request failed')
+      );
+    }
+    return data;
+  }
+
+  async function requestManual(path, options = {}) {
+    const response = await fetch(MANUAL_LAB_URL + path, options);
+    let data;
+    try {
+      data = await response.json();
+    } catch (_) {
+      throw new Error('Manual diagnostics API returned an unreadable response.');
+    }
+    if (!response.ok) {
+      const detail = data.detail;
+      const message = Array.isArray(detail)
+        ? detail.map(item => item.message || JSON.stringify(item)).join('; ')
+        : typeof detail === 'string'
+          ? detail
+          : JSON.stringify(detail || 'Manual diagnostics request failed');
+      throw new Error(message);
+    }
+    return data;
+  }
+
+  const postManual = (path, payload) => requestManual(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
   /*
    * Map the backend's demo fault codes onto the five monitored systems so the
    * dashboard and the 3D digital twin stay in sync with the actual API result.
@@ -136,6 +185,10 @@
     ],
     'over-voltage': [
       { id: 'battery', severity: 'warning' }
+    ],
+    'temperature-sensor-failure': [
+      { id: 'thermal', severity: 'warning' },
+      { id: 'bms', severity: 'warning' }
     ]
   };
 
@@ -151,7 +204,9 @@
       thermal: 'normal',
       bms: 'normal',
       vcu: 'normal',
-      communication: 'normal'
+      communication: faults.some(f =>
+        f.code === 'abnormal-can-activity'
+      ) ? 'warning' : 'normal'
     };
 
     let severity = 'normal';
@@ -304,7 +359,9 @@
 
             thermal: apiFaults.some(f =>
               f.code === 'over-temperature'
-            ) ? 'critical' : 'normal',
+            ) ? 'critical' : apiFaults.some(f =>
+              f.code === 'temperature-sensor-failure'
+            ) ? 'warning' : 'normal',
 
             bms: apiFaults.some(f =>
               [
@@ -313,6 +370,8 @@
                 'over-voltage',
                 'over-temperature'
               ].includes(f.code)
+            ) || apiFaults.some(f =>
+              f.code === 'temperature-sensor-failure'
             ) ? 'warning' : 'normal',
 
             vcu: apiFaults.some(f =>
@@ -344,7 +403,16 @@
           timestamp: timestamp * 1000,
           voltage: Number(raw.voltage),
           current: Number(raw.current),
-          temperature: Number(raw.temperature),
+          temperature: raw.temperature === null ||
+            raw.temperature === undefined
+            ? null
+            : Number(raw.temperature),
+          sensorAvailability: raw.sensor_availability || {
+            voltage: true,
+            current: true,
+            temperature: true
+          },
+          faultLab: raw.fault_lab || null,
           health,
           prediction,
           forecasts: raw.forecasts || null,
@@ -366,7 +434,10 @@
           !Number.isFinite(timestamp) ||
           !Number.isFinite(reading.voltage) ||
           !Number.isFinite(reading.current) ||
-          !Number.isFinite(reading.temperature) ||
+          (
+            !Number.isFinite(reading.temperature) &&
+            reading.sensorAvailability.temperature !== false
+          ) ||
           (
             prediction.status === 'ready' &&
             probability === null
@@ -482,6 +553,10 @@
       this.timer = setInterval(() => {
         this.tick();
       }, 2000);
+    }
+
+    refresh() {
+      this.tick(true);
     }
 
     pause() {
@@ -627,6 +702,30 @@
 
   EV.getApiReadings = getReadings;
   EV.clearCanMessages = clearCanMessages;
+  EV.startFaultLab = scenarioId =>
+    postFaultLabAction('start', { scenario_id: scenarioId });
+  EV.stopFaultLab = () => postFaultLabAction('stop');
+  EV.resetFaultLab = () => postFaultLabAction('reset');
+  EV.submitManualReading = payload =>
+    postManual('/readings', payload);
+  EV.submitManualBatch = rows =>
+    postManual('/readings/batch', { rows });
+  EV.getManualHistory = (source, limit = 100) =>
+    requestManual('/history?source=' + encodeURIComponent(source) +
+      '&limit=' + encodeURIComponent(limit));
+  EV.getManualSubmission = key =>
+    requestManual('/submissions/' + encodeURIComponent(key));
+  EV.getSourceForecast = source =>
+    fetch(API_URL.replace('/readings', '/forecast/multilevel') +
+      '?source=' + encodeURIComponent(source))
+      .then(async response => {
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.detail || 'Could not load source forecast');
+        }
+        return data;
+      });
+  EV.deriveDiagnostics = deriveDiagnostics;
   EV.ApiSource = ApiSource;
 
 })(window);

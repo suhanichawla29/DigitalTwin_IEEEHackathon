@@ -133,7 +133,7 @@ class EVSimulatorAnomalyPredictor:
             self._load()
             return self.model is not None
 
-    def evaluate(self, frame):
+    def evaluate(self, frame, previous=None):
         """Evaluate one decoded project DBC frame without using SynCAN."""
         with self.lock:
             if frame.get("decode_status") != "decoded":
@@ -151,7 +151,7 @@ class EVSimulatorAnomalyPredictor:
                     ),
                 }
 
-            previous = self.previous
+            previous = self.previous if previous is None else previous
             vector, current = frame_features(frame, previous)
             self.previous = current
             if not self.metadata.get("feature_names"):

@@ -131,6 +131,13 @@ const source = new EV.ApiSource();
   );
 
   let state = null;
+  let latestLiveState = null;
+  let dashboardSourceMode = 'simulator';
+  let manualCsvPreview = [];
+  let manualRecords = [];
+  let manualSelectedKey = null;
+  let pendingManualRequest = null;
+  let pendingBatchRequest = null;
   let route = 'dashboard';
   let initialRender = true;
   let lastDiagnostic = null;
@@ -233,9 +240,11 @@ const source = new EV.ApiSource();
           </time>
           ${r.seeded ? '<span class="subtle-badge">SEEDED</span>' : ''}
         </td>
-        <td>${r.voltage.toFixed(1)} V</td>
-        <td>${r.current.toFixed(1)} A</td>
-        <td>${r.temperature.toFixed(1)} °C</td>
+        <td>${Number.isFinite(r.voltage) ? r.voltage.toFixed(1) + ' V' : 'Unavailable'}</td>
+        <td>${Number.isFinite(r.current) ? r.current.toFixed(1) + ' A' : 'Unavailable'}</td>
+        <td>${Number.isFinite(r.temperature)
+          ? r.temperature.toFixed(1) + ' °C'
+          : 'Unavailable'}</td>
         <td>${escape(modelCondition)}</td>
         <td>${escape(probability)}</td>
         <td>${escape(scenarioLabel(r.scenario || 'normal'))}</td>
@@ -307,16 +316,6 @@ const source = new EV.ApiSource();
             : evAnomaly.status === 'not_evaluated'
               ? 'Not evaluated'
               : 'Unavailable';
-      const synCANState = message.synCAN_status === 'evaluated'
-        ? message.synCAN_anomaly ? 'Anomaly detected' : 'Normal'
-        : message.synCAN_status === 'warming_up'
-          ? 'Warming up'
-          : message.synCAN_status === 'incompatible_features'
-            ? 'Not evaluated — incompatible features'
-            : message.synCAN_status === 'model_unavailable'
-              ? 'Model unavailable'
-              : 'Not evaluated';
-
       return `
         <tr
           class="can-message-row${key === selectedCanMessage ? ' selected' : ''}"
@@ -334,7 +333,6 @@ const source = new EV.ApiSource();
           <td><code>${escape(message.payload_hex || 'Unavailable')}</code></td>
           <td>${signals || 'Unavailable'}</td>
           <td title="${escape(evAnomaly.reason || evAnomaly.source || '')}">${escape(evAnomalyState)}</td>
-          <td>${escape(synCANState)}</td>
           <td>${escape(decodeState)}</td>
         </tr>
       `;
@@ -343,7 +341,7 @@ const source = new EV.ApiSource();
     $('can-history-live-count').textContent =
       matching.length + ' / ' + messages.length + ' recent frames';
     $('can-history-table').innerHTML = newest.slice(0, 25).map(rowMarkup).join('')
-      || '<tr><td colspan="10" class="empty">CAN message history is empty.</td></tr>';
+      || '<tr><td colspan="9" class="empty">CAN message history is empty.</td></tr>';
     $('can-history-count').textContent =
       'Showing up to 25 of ' + matching.length + ' matching frames';
 
@@ -361,16 +359,6 @@ const source = new EV.ApiSource();
           : signal.value)}${signal.unit ? ' ' + escape(signal.unit) : ''}</strong>
       </div>
     `).join('') || '<p>No decoded signals are available for this frame.</p>';
-    const synCANDetail = selected.synCAN_status === 'evaluated'
-      ? selected.synCAN_anomaly ? 'Anomaly detected' : 'Normal'
-      : selected.synCAN_status === 'warming_up'
-        ? 'Warming up'
-        : selected.synCAN_status === 'incompatible_features'
-          ? selected.synCAN_note ||
-            'Not evaluated: this frame does not match the SynCAN feature schema.'
-          : selected.synCAN_status === 'model_unavailable'
-            ? selected.synCAN_note || 'SynCAN model unavailable.'
-            : 'Not evaluated.';
     const selectedEv = selected.ev_anomaly || {};
     const selectedEvScore = Number(selectedEv.anomaly_score);
     const evDetail = selectedEv.status === 'evaluated'
@@ -400,7 +388,6 @@ const source = new EV.ApiSource();
           ? 'DBC decoder: decoded'
           : 'DBC decoder error: ' + (selected.error || 'unknown error'))}
         · EV simulator detector (${escape(selectedEv.source || 'unavailable')}): ${escape(evDetail)}
-        · SynCAN: ${escape(synCANDetail)}
       </p>
     `;
   }
@@ -699,6 +686,799 @@ const source = new EV.ApiSource();
     );
   }
 
+  function formatManualValue(value, unit) {
+    return Number.isFinite(value) ? value.toFixed(2) + ' ' + unit : 'Missing';
+  }
+
+  function manualAssessmentStatus(record) {
+    return record.result?.assessment?.status ||
+      record.submission_status ||
+      'invalid_input';
+  }
+
+  function renderManualResult(record) {
+    const result = record.result || {};
+    const assessment = result.assessment || {};
+    const status = manualAssessmentStatus(record);
+    const statusClass = ['normal', 'warning', 'critical'].includes(status)
+      ? status
+      : 'offline';
+    const normalized = result.normalized_readings || {};
+    const rules = result.triggered_rules || [];
+    const comparison = result.comparison || {};
+    const model = result.model_result || {};
+    const errors = record.validation?.errors || result.errors || [];
+    const missing = result.missing_fields || [];
+    const suggestions = result.suggested_checks || [];
+    const content = $('manual-result-content');
+    const ruleMarkup = rules.length
+      ? `<ul>${rules.map(rule => `
+          <li><strong>${escape(rule.label || rule.code)}</strong>:
+            observed ${escape(rule.observed === null ? 'missing' : rule.observed)}
+            ${escape(rule.unit || '')};
+            ${escape(rule.threshold || 'configured rule triggered')}.
+          </li>`).join('')}</ul>`
+      : '<p>No threshold rules were triggered.</p>';
+    const compareMarkup = Object.keys(comparison).length
+      ? `<ul>${Object.entries(comparison).map(([name, item]) => `
+          <li>${escape(name)} changed ${escape(Number(item.change).toFixed(2))}
+            ${escape(item.unit)} from previous reading
+            (${escape(fullDate(item.previous_timestamp * 1000))}).</li>
+        `).join('')}</ul>`
+      : '<p>No earlier compatible reading is available for comparison.</p>';
+    const errorMarkup = errors.length
+      ? `<ul>${errors.map(item => `<li>${escape(item.field)}: ${escape(item.message)}</li>`).join('')}</ul>`
+      : '';
+    const limitations = (result.limitations || []).map(item =>
+      `<li>${escape(item)}</li>`
+    ).join('');
+    const suggestionMarkup = suggestions.length
+      ? `<ul class="manual-suggestion">${suggestions.map(item => `<li>${escape(item)}</li>`).join('')}</ul>`
+      : '<p>Suggestions are not a confirmed root cause.</p>';
+
+    $('manual-result-empty').hidden = true;
+    $('manual-result-status').className = 'pill ' + statusClass;
+    $('manual-result-status').textContent =
+      assessment.label || (
+        status === 'invalid_input' ? 'Invalid input' : stateLabel(status)
+      );
+    content.hidden = false;
+    content.innerHTML = `
+      <div class="manual-result-grid">
+        <section class="manual-result-block">
+          <h4>Assessment · ${escape(record.source || 'manual')}</h4>
+          <p>${escape(fullDate((record.timestamp || record.created_at) * 1000))}</p>
+          <p>Voltage ${escape(formatManualValue(normalized.voltage, 'V'))} ·
+            current ${escape(formatManualValue(normalized.current, 'A'))} ·
+            temperature ${escape(formatManualValue(normalized.temperature, '°C'))}</p>
+          ${missing.length ? `<p>Missing signals: ${escape(missing.join(', '))}.</p>` : ''}
+          ${errorMarkup}
+        </section>
+        <section class="manual-result-block">
+          <h4>Threshold diagnostics</h4>
+          ${ruleMarkup}
+        </section>
+        <section class="manual-result-block">
+          <h4>EV simulator model · ${escape(model.status || 'not evaluated')}</h4>
+          <p>${escape(model.reason || model.message || model.score_type ||
+            'Model output is reported separately from threshold diagnostics.')}</p>
+          ${Number.isFinite(model.anomaly_score)
+            ? `<p>Model score: ${escape(model.anomaly_score)}</p>`
+            : ''}
+          <p>Not a model-native explanation unless explicitly provided by the detector.</p>
+        </section>
+        <section class="manual-result-block">
+          <h4>Earlier-reading comparison</h4>
+          ${compareMarkup}
+          <p>CAN: ${escape(result.can_result?.status || 'not processed')}
+            ${result.can_result?.message_name
+              ? ' · ' + escape(result.can_result.message_name) +
+                ' · ' + escape(result.can_result.payload_hex || '')
+              : ''}</p>
+        </section>
+        <section class="manual-result-block">
+          <h4>Limitations</h4>
+          <ul>${limitations || '<li>No additional limitation metadata returned.</li>'}</ul>
+        </section>
+        <section class="manual-result-block">
+          <h4>Suggested checks · not confirmed causes</h4>
+          ${suggestionMarkup}
+        </section>
+      </div>
+    `;
+  }
+
+  function renderManualHistory(records) {
+    const rows = $('manual-history-rows');
+    rows.innerHTML = records.map(record => {
+      const result = record.result || {};
+      const normalized = result.normalized_readings || {};
+      const rules = (result.triggered_rules || [])
+        .map(rule => rule.label || rule.code)
+        .join(', ');
+      const status = manualAssessmentStatus(record);
+      const message = rules ||
+        result.errors?.map(item => item.message).join('; ') ||
+        result.model_result?.reason ||
+        'No threshold rules triggered.';
+      return `
+        <tr tabindex="0" role="button"
+            data-manual-key="${escape(record.idempotency_key)}"
+            aria-label="Inspect ${escape(record.source)} submission from ${escape(fullDate((record.timestamp || record.created_at) * 1000))}">
+          <td>${escape(fullDate((record.timestamp || record.created_at) * 1000))}</td>
+          <td>${escape(record.source)}</td>
+          <td><span class="pill ${['normal', 'warning', 'critical'].includes(status) ? status : 'offline'}">${escape(result.assessment?.label || status)}</span></td>
+          <td>${escape(result.model_result?.status || 'not evaluated')}</td>
+          <td>${escape(message)} · V ${escape(formatManualValue(normalized.voltage, 'V'))}, A ${escape(formatManualValue(normalized.current, 'A'))}, °C ${escape(formatManualValue(normalized.temperature, '°C'))}</td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="5" class="empty">No saved submissions for this source.</td></tr>';
+  }
+
+  function manualDashboardState(records, forecasts, sourceName) {
+    const processed = records
+      .filter(record =>
+        record.submission_status === 'processed' &&
+        record.result?.status === 'processed' &&
+        Number.isFinite(Number(record.timestamp))
+      )
+      .slice()
+      .sort((left, right) => left.timestamp - right.timestamp);
+    const readings = processed.map(record => {
+      const result = record.result;
+      const values = result.normalized_readings || {};
+      const diagnostics = EV.deriveDiagnostics({
+        diagnostics: result.diagnostics || { faults: [] }
+      });
+      return {
+        timestamp: Number(record.timestamp) * 1000,
+        voltage: values.voltage === null ? null : Number(values.voltage),
+        current: values.current === null ? null : Number(values.current),
+        temperature: values.temperature === null ? null : Number(values.temperature),
+        sensorAvailability: {
+          voltage: values.voltage !== null && values.voltage !== undefined,
+          current: values.current !== null && values.current !== undefined,
+          temperature: values.temperature !== null && values.temperature !== undefined
+        },
+        health: null,
+        prediction: {
+          status: 'unavailable',
+          failure_probability: null,
+          history_count: 0,
+          window_size: 30,
+          horizon_seconds: 300,
+          message: 'The live simulator failure-probability model is not used for manual input.'
+        },
+        forecasts,
+        datasetModels: latestLiveState?.current?.datasetModels || {},
+        canMessages: [],
+        scenario: sourceName === 'manual' ? 'Manual input' : 'Preset simulated',
+        seeded: false,
+        source: sourceName === 'manual' ? 'MANUAL_INPUT' : 'SIMULATED_PRESET',
+        diagnostics
+      };
+    });
+
+    const events = [];
+    let previousFault = false;
+    processed.forEach((record, index) => {
+      const result = record.result;
+      const diagnostic = result.diagnostics || { faults: [] };
+      const faults = diagnostic.faults || [];
+      const modelAnomaly =
+        result.assessment?.model_result === 'model_detected_anomaly';
+      const active = faults.length > 0 || modelAnomaly;
+      const timestamp = Number(record.timestamp) * 1000;
+      if (active) {
+        events.push({
+          timestamp,
+          type: 'fault',
+          title: faults.map(fault => fault.label).join(', ') ||
+            'EV simulator model anomaly',
+          scenario: sourceName === 'manual' ? 'Manual input' : 'Preset simulated',
+          severity: faults.some(fault => fault.severity === 'critical')
+            ? 'critical'
+            : 'warning',
+          message: (faults.map(fault => fault.description).join(' ') ||
+            result.model_result?.reason || 'Model reported an anomaly.') +
+            ' Submission: ' + record.idempotency_key,
+          eventId: record.event_id
+        });
+      } else if (previousFault) {
+        events.push({
+          timestamp,
+          type: 'recovery',
+          title: 'Returned to normal operation',
+          scenario: sourceName === 'manual' ? 'Manual input' : 'Preset simulated',
+          severity: 'normal',
+          message: 'A later submitted reading no longer triggered a fault rule.',
+          eventId: record.event_id
+        });
+      }
+      previousFault = active;
+      readings[index].manualSubmissionKey = record.idempotency_key;
+    });
+
+    const latest = readings[readings.length - 1];
+    if (!latest) return null;
+    return {
+      current: latest,
+      readings: readings.slice(-300),
+      events,
+      canMessages: [],
+      running: false
+    };
+  }
+
+  function updateManualSourceBanner(snapshot) {
+    const sourceName = dashboardSourceMode;
+    const label = sourceName === 'manual'
+      ? 'MANUAL INPUT'
+      : sourceName === 'preset_simulated'
+        ? 'PRESET SIMULATED'
+        : 'LIVE SIMULATOR';
+    $('manual-source-status').className = 'pill ' +
+      (sourceName === 'simulator' ? 'normal' : 'warning');
+    $('manual-source-status').textContent = label;
+    const timestamp = snapshot?.current?.timestamp;
+    $('manual-source-timestamp').textContent = timestamp
+      ? 'Displaying selected source · last sample ' + fullDate(timestamp)
+      : sourceName === 'simulator'
+        ? 'Displaying the existing simulated CAN feed.'
+        : 'No processed readings are available for this source yet.';
+    $('forecast-overall-status').setAttribute(
+      'aria-label',
+      'Forecast status for ' + label.toLowerCase()
+    );
+    $('multilevel-forecast-title').nextElementSibling.textContent =
+      sourceName === 'simulator'
+        ? 'Recent-trend projections from persisted, DBC-decoded simulator telemetry'
+        : 'Recent-trend projections from only the selected, timestamped input source';
+  }
+
+  async function loadManualDashboard(sourceName = dashboardSourceMode) {
+    if (sourceName === 'simulator') return;
+    $('manual-source-timestamp').textContent = 'Loading saved ' +
+      (sourceName === 'manual' ? 'manual input' : 'preset example') +
+      ' history…';
+    try {
+      const [history, forecasts] = await Promise.all([
+        EV.getManualHistory(sourceName, 300),
+        EV.getSourceForecast(sourceName)
+      ]);
+      if (dashboardSourceMode !== sourceName) return;
+      manualRecords = history.submissions || [];
+      renderManualHistory(manualRecords);
+      const snapshot = manualDashboardState(
+        manualRecords,
+        forecasts,
+        sourceName
+      );
+      updateManualSourceBanner(snapshot);
+      renderMultiLevelForecast(forecasts);
+      if (snapshot) {
+        lastDiagnostic = null;
+        updateState(snapshot, {});
+      } else {
+        setManualEmptyDashboard();
+        renderMultiLevelForecast(forecasts);
+        updateManualSourceBanner(null);
+        $('manual-source-timestamp').textContent =
+          'No processed readings are available for this source yet. Submissions remain saved in its history.';
+        $('manual-result-empty').hidden = false;
+      }
+    } catch (error) {
+      $('manual-source-timestamp').textContent =
+        'Could not load selected-source history: ' + error.message;
+      $('manual-source-status').className = 'pill critical';
+      $('manual-source-status').textContent = 'SOURCE ERROR';
+      toast('Could not load manual dashboard data: ' + error.message);
+      console.error('Manual dashboard load error:', error);
+    }
+  }
+
+  function setManualEmptyDashboard() {
+    state = { current: null, readings: [], events: [], canMessages: [], running: false };
+    charts.clear();
+    twin.update(null);
+    ['voltage', 'current', 'temperature', 'health'].forEach(key => {
+      $('value-' + key).textContent = '—';
+      const trend = $('trend-' + key);
+      if (trend) trend.textContent = '—';
+    });
+    $('health-badge').className = 'pill offline';
+    $('health-badge').textContent = 'No data';
+    $('alert-box').className = 'alert-box normal';
+    $('alert-title').textContent = 'No selected-source readings';
+    $('alert-description').textContent =
+      'Submit data or choose another dashboard source.';
+    $('session-state').textContent = dashboardSourceMode === 'manual'
+      ? 'MANUAL INPUT · EMPTY'
+      : 'PRESET EXAMPLES · EMPTY';
+    $('connection-label').textContent = 'No saved readings for this source';
+    $('last-updated').textContent = 'No source timestamp';
+    $('chart-live').textContent = 'NO DATA';
+    $('overview-health').textContent = '—';
+    $('risk-value').innerHTML = '—<span></span>';
+    $('risk-explanation').textContent =
+      'A source-specific forecast is unavailable until compatible readings exist.';
+    $('manual-source-status').textContent =
+      dashboardSourceMode === 'manual' ? 'MANUAL INPUT' : 'PRESET SIMULATED';
+    document.querySelectorAll('.system-item').forEach(item => {
+      item.dataset.state = 'offline';
+      item.querySelector('small').textContent = 'No data';
+    });
+    document.querySelectorAll('.overview-row').forEach(item => {
+      item.dataset.state = 'offline';
+      item.querySelector('.overview-status').textContent = 'No data';
+    });
+    renderHistory();
+    renderCanHistory();
+  }
+
+  function csvRecords(text) {
+    const records = [];
+    let fields = [];
+    let field = '';
+    let quoted = false;
+    let line = 1;
+    let recordLine = 1;
+    let malformed = null;
+
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index];
+      if (quoted) {
+        if (character === '"' && text[index + 1] === '"') {
+          field += '"';
+          index += 1;
+        } else if (character === '"') {
+          quoted = false;
+        } else {
+          field += character;
+          if (character === '\n') line += 1;
+        }
+      } else if (character === '"') {
+        if (field.length) malformed = 'Unexpected quote in an unquoted field.';
+        quoted = true;
+      } else if (character === ',') {
+        fields.push(field.trim());
+        field = '';
+      } else if (character === '\n' || character === '\r') {
+        fields.push(field.trim());
+        field = '';
+        const values = fields;
+        if (values.some(value => value !== '') || malformed) {
+          records.push({ line: recordLine, fields: values, error: malformed });
+        }
+        fields = [];
+        malformed = null;
+        if (character === '\r' && text[index + 1] === '\n') index += 1;
+        line += 1;
+        recordLine = line;
+      } else {
+        field += character;
+      }
+    }
+
+    fields.push(field.trim());
+    if (fields.some(value => value !== '') || malformed) {
+      records.push({
+        line: recordLine,
+        fields,
+        error: quoted ? 'Quoted field was not closed.' : malformed
+      });
+    }
+    return records;
+  }
+
+  function validateCsvPreview(raw = $('manual-csv-input').value, render = true) {
+    const parsed = csvRecords(raw);
+    if (!parsed.length) {
+      manualCsvPreview = [];
+      if (render) {
+        $('manual-csv-summary').textContent = 'Paste CSV data to preview rows.';
+        renderCsvPreview();
+      }
+      return manualCsvPreview;
+    }
+
+    const headerRecord = parsed.shift();
+    const headers = headerRecord.fields.map(header => header.toLowerCase());
+    const allowed = new Set([
+      'timestamp',
+      'voltage_v',
+      'current_a',
+      'temperature_c',
+      'can_id',
+      'raw_payload'
+    ]);
+    const headerErrors = [];
+    if (!headers.includes('timestamp')) headerErrors.push('Missing required timestamp header.');
+    if (headers.some(header => !allowed.has(header))) {
+      headerErrors.push('Unsupported header(s): ' +
+        headers.filter(header => !allowed.has(header)).join(', ') + '.');
+    }
+    if (new Set(headers).size !== headers.length) {
+      headerErrors.push('Duplicate column names are not allowed.');
+    }
+    if (!['voltage_v', 'current_a', 'temperature_c'].some(name => headers.includes(name)) &&
+        !(headers.includes('can_id') && headers.includes('raw_payload'))) {
+      headerErrors.push('Include at least one supported signal column or both CAN columns.');
+    }
+    const rows = parsed.map(record => {
+      const errors = [];
+      if (record.error) errors.push(record.error);
+      if (headerErrors.length) errors.push(...headerErrors);
+      if (record.fields.length !== headers.length) {
+        errors.push('Expected ' + headers.length + ' fields, found ' +
+          record.fields.length + '.');
+      }
+      const row = {};
+      headers.forEach((header, index) => {
+        const value = record.fields[index] ?? '';
+        if (header === 'timestamp') {
+          if (!value || !Number.isFinite(Date.parse(value))) {
+            errors.push('Timestamp must be ISO-8601 or Unix seconds.');
+          } else {
+            row.timestamp = /^\d+(?:\.\d+)?$/.test(value)
+              ? new Date(Number(value) * 1000).toISOString()
+              : new Date(value).toISOString();
+          }
+          return;
+        }
+        const signal = {
+          voltage_v: ['voltage', 0, 1000],
+          current_a: ['current', 0, 1000],
+          temperature_c: ['temperature', -40, 200]
+        }[header];
+        if (signal) {
+          if (value === '') {
+            row[signal[0]] = null;
+          } else if (!Number.isFinite(Number(value))) {
+            errors.push(header + ' must be numeric.');
+          } else if (Number(value) < signal[1] || Number(value) > signal[2]) {
+            errors.push(header + ' is outside the DBC physical range.');
+          } else {
+            row[signal[0]] = Number(value);
+          }
+        } else if (header === 'can_id' && value) {
+          row.can_id = value;
+        } else if (header === 'raw_payload' && value) {
+          row.raw_payload = value;
+        }
+      });
+      if (Boolean(row.can_id) !== Boolean(row.raw_payload)) {
+        errors.push('CAN ID and raw payload must be supplied together.');
+      }
+      if (
+        row.can_id &&
+        (!/^(?:0x[0-9a-f]+|\d+)$/i.test(row.can_id) ||
+          !/^(?:[0-9a-f]{2}(?:[\s:_-]*[0-9a-f]{2}){0,7})$/i.test(row.raw_payload))
+      ) {
+        errors.push('CAN ID or payload format is invalid; payload must be 1–8 hex bytes.');
+      }
+      if (
+        [row.voltage, row.current, row.temperature].every(value => value === null || value === undefined) &&
+        !row.can_id
+      ) {
+        errors.push('Provide at least one sensor value or a CAN frame.');
+      }
+      return { line: record.line, row, errors, selected: errors.length === 0 };
+    });
+
+    const seenTimestamps = new Set();
+    rows.forEach(item => {
+      if (item.errors.length || !item.row.timestamp) return;
+      const stamp = new Date(item.row.timestamp).getTime();
+      if (seenTimestamps.has(stamp)) {
+        item.errors.push('Duplicate timestamp; edit or skip this row.');
+        item.selected = false;
+      } else {
+        seenTimestamps.add(stamp);
+      }
+    });
+    manualCsvPreview = rows;
+    const validCount = rows.filter(item => !item.errors.length).length;
+    const invalidCount = rows.length - validCount;
+    if (render) {
+      $('manual-csv-summary').textContent =
+        validCount + ' valid row(s), ' + invalidCount +
+        ' row(s) needing correction or skipping.' +
+        (headerErrors.length ? ' ' + headerErrors.join(' ') : '');
+      renderCsvPreview();
+    }
+    return manualCsvPreview;
+  }
+
+  function renderCsvPreview() {
+    $('manual-preview-rows').innerHTML = manualCsvPreview.map(item => `
+      <tr class="${item.errors.length ? 'is-invalid' : 'is-valid'}">
+        <td><input type="checkbox" data-csv-row="${item.line}"
+          aria-label="Include CSV row ${item.line}" ${item.selected ? 'checked' : ''}
+          ${item.errors.length || item.submitted ? 'disabled' : ''}></td>
+        <td>${item.line}</td>
+        <td>${escape(item.row.timestamp || item.row.timestamp_text || 'Invalid')}</td>
+        <td>${escape([
+          item.row.voltage !== undefined ? 'V ' + item.row.voltage : '',
+          item.row.current !== undefined ? 'A ' + item.row.current : '',
+          item.row.temperature !== undefined ? '°C ' + item.row.temperature : '',
+          item.row.can_id ? 'CAN ' + item.row.can_id : ''
+        ].filter(Boolean).join(' · ') || 'No readable values')}</td>
+        <td>${escape(item.submitted
+          ? 'Submitted · ' + item.submitted
+          : item.errors.join(' ') || 'Ready to submit')}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" class="empty">Paste or upload CSV, then validate it.</td></tr>';
+    const selected = manualCsvPreview.filter(item =>
+      item.selected && !item.errors.length
+    ).length;
+    $('manual-submit-batch').disabled = selected === 0;
+  }
+
+  function newIdempotencyKey() {
+    return window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : 'manual-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+  }
+
+  function idempotentPayload(payload, pending) {
+    const signature = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(payload).filter(([key]) => key !== 'idempotency_key')
+      )
+    );
+    if (pending && pending.signature === signature) {
+      return pending;
+    }
+    return {
+      signature,
+      payload: { ...payload, idempotency_key: newIdempotencyKey() }
+    };
+  }
+
+  function manualPayloadFromForm(form, sourceName) {
+    const fields = new FormData(form);
+    const timestampValue = String(fields.get('timestamp') || '');
+    const payload = {
+      idempotency_key: newIdempotencyKey(),
+      source: sourceName,
+      timestamp: timestampValue
+        ? new Date(timestampValue).toISOString()
+        : new Date().toISOString(),
+      units: { voltage: 'V', current: 'A', temperature: '°C' }
+    };
+    ['voltage', 'current', 'temperature'].forEach(name => {
+      const raw = String(fields.get(name) || '').trim();
+      payload[name] = raw === '' ? null : Number(raw);
+    });
+    const canId = String(fields.get('can_id') || '').trim();
+    const rawPayload = String(fields.get('raw_payload') || '').trim();
+    if (canId || rawPayload) {
+      payload.can_id = canId;
+      payload.raw_payload = rawPayload;
+    }
+    return payload;
+  }
+
+  function setManualBusy(busy, message) {
+    $('manual-submit-single').disabled = busy;
+    $('manual-submit-preset').disabled = busy ||
+      !$('manual-preset-select').value;
+    $('manual-submit-batch').disabled = busy ||
+      !manualCsvPreview.some(item => item.selected && !item.errors.length);
+    if (busy) {
+      $('manual-result-status').className = 'pill warning';
+      $('manual-result-status').textContent = 'Submitting…';
+    }
+    if (message) $('manual-result-empty').textContent = message;
+  }
+
+  async function showManualSubmission(record, message) {
+    renderManualResult(record);
+    if (message) toast(message);
+    if (dashboardSourceMode !== 'simulator') {
+      await loadManualDashboard(dashboardSourceMode);
+      renderManualResult(record);
+    } else {
+      EV.getManualHistory(record.source, 100)
+        .then(history => renderManualHistory(history.submissions || []))
+        .catch(error => {
+          console.error('Manual history refresh failed:', error);
+          toast('Submission saved, but history refresh failed: ' + error.message);
+        });
+    }
+  }
+
+  function selectManualMode(mode) {
+    document.querySelectorAll('[data-manual-mode]').forEach(tab => {
+      const selected = tab.dataset.manualMode === mode;
+      tab.classList.toggle('active', selected);
+      tab.setAttribute('aria-selected', String(selected));
+    });
+    ['single', 'batch', 'preset'].forEach(name => {
+      $('manual-mode-' + name).hidden = name !== mode;
+    });
+  }
+
+  function setCurrentLocalTimestamp(input) {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+    input.value = now.toISOString().slice(0, 16);
+  }
+
+  function populatePreset(name) {
+    const templates = {
+      normal: {
+        voltage: '400', current: '35', temperature: '45',
+        description: 'Normal-operation example: 400 V, 35 A, 45 °C.'
+      },
+      'rising-temperature': {
+        voltage: '400', current: '60', temperature: '85',
+        description: 'High-temperature example: 85 °C exceeds the configured 80 °C rule threshold.'
+      },
+      'voltage-drop': {
+        voltage: '270', current: '35', temperature: '45',
+        description: 'Low-voltage example: 270 V is below the configured 300 V rule threshold.'
+      },
+      'missing-sensor': {
+        voltage: '400', current: '35', temperature: '',
+        description: 'Sensor-failure example: temperature is intentionally omitted; no value is inferred.'
+      }
+    };
+    const template = templates[name];
+    const isBurst = name === 'can-activity';
+    $('manual-preset-single-fields').hidden = isBurst;
+    $('manual-preset-batch-fields').hidden = !isBurst;
+    if (!name) {
+      $('manual-preset-description').textContent =
+        'Choose a template to populate editable fields. Templates are examples, not measured vehicle data.';
+      $('manual-submit-preset').disabled = true;
+      return;
+    }
+    if (isBurst) {
+      const start = Date.now() / 1000;
+      const lines = ['timestamp,voltage_V,current_A,temperature_C,can_id,raw_payload'];
+      for (let index = 0; index < 6; index += 1) {
+        lines.push([
+          new Date((start + index * 0.15) * 1000).toISOString(),
+          '400', '35', '45', '0x100', '"A0 0F 5E 01 52 03 00 00"'
+        ].join(','));
+      }
+      $('manual-preset-csv').value = lines.join('\n');
+      $('manual-preset-description').textContent =
+        'Six editable, valid DBC telemetry frames within a two-second interval. The CAN-rate diagnostic evaluates these submitted frames.';
+    } else {
+      $('manual-preset-voltage').value = template.voltage;
+      $('manual-preset-current').value = template.current;
+      $('manual-preset-temperature').value = template.temperature;
+      setCurrentLocalTimestamp($('manual-preset-timestamp'));
+      $('manual-preset-description').textContent = template.description;
+    }
+    $('manual-submit-preset').disabled = false;
+  }
+
+  function renderFaultLab(snapshot) {
+    const active = snapshot && snapshot.active;
+    const run = active || snapshot && snapshot.latest;
+    const status = snapshot && snapshot.status || 'normal';
+    const statusElement = $('fault-lab-status');
+    const labels = {
+      active: 'Scenario active',
+      stopped: 'Scenario stopped',
+      recovered: 'Recovered to normal',
+      interrupted: 'Interrupted · normal resumed',
+      normal: 'Normal operation'
+    };
+    statusElement.textContent = labels[status] || 'Normal operation';
+    statusElement.className = 'pill ' + (
+      status === 'active' ? 'critical' :
+      status === 'normal' || status === 'recovered' ? 'normal' : 'warning'
+    );
+
+    $('fault-lab-start').disabled = Boolean(active);
+    $('fault-lab-scenario').disabled = Boolean(active);
+    $('fault-lab-stop').disabled = !active;
+    $('fault-lab-reset').disabled = !run || status === 'normal' ||
+      status === 'recovered';
+
+    if (!run) {
+      $('fault-lab-explanation').textContent =
+        'Start a scenario to compare actual simulated readings with their baseline and applicable rule.';
+      $('fault-lab-detector').textContent =
+        'Detector output will appear when the existing diagnostics evaluate a sample.';
+      $('fault-lab-recommendation').textContent =
+        'Suggestions are illustrative and are not confirmed root causes.';
+      $('fault-lab-timeline').innerHTML =
+        '<li>Normal operation · waiting for a scenario.</li>';
+      $('fault-lab-delay').textContent =
+        'Detection delay will be calculated from scenario and detection timestamps.';
+      return;
+    }
+
+    const baseline = run.baseline || {};
+    const latest = run.latest_reading || {};
+    const definition = run.scenario || {};
+    const showValue = (value, unit) => Number.isFinite(value)
+      ? value.toFixed(1) + unit
+      : 'Unavailable';
+    const delta = (value, base, unit) =>
+      Number.isFinite(value) && Number.isFinite(base)
+        ? (value - base >= 0 ? '+' : '') +
+          (value - base).toFixed(1) + unit
+        : 'Unavailable';
+    const scenarioId = run.scenario_id;
+    const signalDetails = [
+      'Voltage ' + showValue(latest.voltage, ' V') +
+        ' (baseline ' + showValue(baseline.voltage, ' V') +
+        ', change ' + delta(latest.voltage, baseline.voltage, ' V') + ')',
+      'Current ' + showValue(latest.current, ' A') +
+        ' (baseline ' + showValue(baseline.current, ' A') +
+        ', change ' + delta(latest.current, baseline.current, ' A') + ')',
+      'Temperature ' + showValue(latest.temperature, ' °C') +
+        ' (baseline ' + showValue(baseline.temperature, ' °C') +
+        ', change ' + delta(latest.temperature, baseline.temperature, ' °C') + ')'
+    ];
+    $('fault-lab-explanation').textContent =
+      (run.scenario_name || 'Fault scenario') + '. ' +
+      (definition.description || '') + ' ' +
+      signalDetails.join('; ') + '. Applicable rule: ' +
+      (definition.threshold || 'See detector rule output.') + '.';
+
+    const faults = latest.diagnostic_faults || [];
+    const detector = latest.ev_simulator_detector || {};
+    const diagnosticOutput = faults.length
+      ? faults.map(fault => fault.label + ': ' + fault.description).join(' ')
+      : latest.timestamp
+        ? 'Python rule-based diagnostics: no applicable fault rule triggered in the latest sample.'
+        : 'Waiting for the first scenario sample.';
+    const evOutput = detector.status === 'evaluated'
+      ? ' EV simulator anomaly detector: ' +
+        (detector.is_anomaly ? 'Anomaly' : 'Normal') +
+        ' (score ' + Number(detector.anomaly_score).toFixed(3) + '). ' +
+        detector.reason
+      : detector.status === 'warming_up'
+        ? ' EV simulator anomaly detector: warming up. ' + (detector.reason || '')
+        : detector.reason
+          ? ' EV simulator anomaly detector: not evaluated. ' + detector.reason
+          : '';
+    $('fault-lab-detector').textContent =
+      diagnosticOutput + evOutput;
+    $('fault-lab-recommendation').textContent =
+      definition.recommendation ||
+      'Suggestions are illustrative and are not confirmed root causes.';
+
+    const timeline = Array.isArray(run.timeline) ? run.timeline : [];
+    $('fault-lab-timeline').innerHTML = timeline.map(item => `
+      <li>
+        <time datetime="${new Date(item.timestamp * 1000).toISOString()}">
+          ${escape(fullDate(item.timestamp * 1000))}
+        </time>
+        <strong>${escape(item.title || item.type)}</strong>
+        ${item.detector ? '<span>' + escape(item.detector) + '</span>' : ''}
+      </li>
+    `).join('') || '<li>Timeline will update after the first sample.</li>';
+
+    if (run.detection_at !== null && run.detection_at !== undefined) {
+      $('fault-lab-delay').textContent = run.detected
+        ? 'Detection delay: ' +
+          Number(run.detection_delay_seconds).toFixed(2) +
+          ' seconds from scenario start to detector output.'
+        : 'Not detected before the scenario ended.';
+    } else if (status === 'active') {
+      $('fault-lab-delay').textContent = run.first_abnormal_at
+        ? 'Abnormal signal observed; awaiting detector output.'
+        : 'Waiting for an abnormal reading and detector result.';
+    } else {
+      $('fault-lab-delay').textContent =
+        'Not detected before the scenario ended.';
+    }
+
+    if (active && definition.component) {
+      twin.select(definition.component);
+    } else if (status === 'recovered' || status === 'interrupted') {
+      twin.clearSelection();
+    }
+  }
+
   function updateState(nextState, change) {
     if (change.type === 'error') {
       showDatasetModelError(change.error);
@@ -735,7 +1515,10 @@ const source = new EV.ApiSource();
       }
 
       if (key !== 'health') {
-        const delta = previous && previous[key]
+        const delta = previous &&
+          Number.isFinite(previous[key]) &&
+          Number.isFinite(r[key]) &&
+          previous[key] !== 0
           ? (r[key] - previous[key]) / previous[key] * 100
           : 0;
 
@@ -745,7 +1528,12 @@ const source = new EV.ApiSource();
             ? '↘ '
             : '— ';
 
-        $('trend-' + key).textContent = previous
+        $('trend-' + key).textContent =
+          key === 'temperature' &&
+          r.sensorAvailability.temperature === false
+          ? 'Unavailable'
+          : previous && Number.isFinite(previous[key]) &&
+            Number.isFinite(r[key])
           ? indicator + Math.abs(delta).toFixed(1) + '%'
           : '—';
 
@@ -792,7 +1580,10 @@ const source = new EV.ApiSource();
       if (card.dataset.metric !== 'health') {
         $('note-' + card.dataset.metric).textContent = affected
           ? d.label + ' · demo'
-          : 'Demo operating band';
+          : card.dataset.metric === 'temperature' &&
+            r.sensorAvailability.temperature === false
+            ? 'Sensor reading unavailable'
+            : 'Demo operating band';
       }
     });
 
@@ -808,7 +1599,7 @@ const source = new EV.ApiSource();
 
     document.querySelectorAll('.overview-row').forEach(item => {
       const status = item.dataset.overview === 'communication'
-        ? 'normal'
+        ? d.systems.communication
         : d.systems[item.dataset.overview];
 
       item.dataset.state = status;
@@ -910,35 +1701,50 @@ const source = new EV.ApiSource();
       animations.ring($('health-progress'), 0);
     }
 
-    $('session-state').textContent = state.running
-      ? 'SIMULATION RUNNING'
-      : 'SIMULATOR PAUSED';
+    const simulatorMode = dashboardSourceMode === 'simulator';
+    const sourceLabel = dashboardSourceMode === 'manual'
+      ? 'MANUAL INPUT'
+      : dashboardSourceMode === 'preset_simulated'
+        ? 'PRESET EXAMPLES'
+        : 'LIVE SIMULATOR';
+    $('session-state').textContent = simulatorMode
+      ? state.running ? 'SIMULATION RUNNING' : 'SIMULATOR PAUSED'
+      : sourceLabel + ' · STATIC';
 
-    $('session-state').classList.toggle('running', state.running);
+    $('session-state').classList.toggle(
+      'running',
+      simulatorMode && state.running
+    );
 
-    $('connection-label').textContent = state.running
-      ? 'Demo feed running'
-      : 'Demo feed paused';
+    $('connection-label').textContent = simulatorMode
+      ? state.running ? 'Demo feed running' : 'Demo feed paused'
+      : sourceLabel.toLowerCase().replace('_', ' ') + ' selected';
 
-    $('connection-dot').style.background = state.running
+    $('connection-dot').style.background = simulatorMode && state.running
       ? 'var(--green)'
       : 'var(--cyan)';
 
-    $('last-updated').textContent = 'Last sample: ' + time(r.timestamp);
+    $('last-updated').textContent = (simulatorMode ? 'Last sample: ' : 'Source timestamp: ') +
+      time(r.timestamp);
+    updateManualSourceBanner(state);
+    $('chart-sampling-note').textContent = simulatorMode
+      ? '2 s sampling · independently scaled, labelled axes'
+      : 'Selected-source samples · independently scaled, labelled axes';
 
-    $('chart-live').textContent = state.running
+    $('chart-live').textContent = simulatorMode && state.running
       ? '● DEMO LIVE'
-      : 'PAUSED';
+      : simulatorMode ? 'PAUSED' : sourceLabel;
 
-    $('chart-live').style.color = state.running
+    $('chart-live').style.color = simulatorMode && state.running
       ? 'var(--green)'
       : 'var(--faint)';
 
     const simulationButton = $('simulation-button');
 
-    simulationButton.querySelector('span').textContent = state.running
-      ? 'Pause Simulation'
-      : 'Start Simulation';
+    simulationButton.querySelector('span').textContent =
+      simulatorMode && state.running ? 'Pause Simulation' : 'Start Simulation';
+    simulationButton.disabled = !simulatorMode;
+    $('reset-button').disabled = !simulatorMode;
 
     simulationButton.setAttribute(
       'aria-pressed',
@@ -959,6 +1765,7 @@ const source = new EV.ApiSource();
     twin.update(state);
     charts.update(state, initialRender);
     renderMultiLevelForecast(r.forecasts);
+    renderFaultLab(r.faultLab);
     if (!canHistoryPaused) {
       renderCanHistory();
     }
@@ -997,6 +1804,13 @@ const source = new EV.ApiSource();
     }
 
     initialRender = false;
+  }
+
+  function handleLiveSourceUpdate(nextState, change) {
+    latestLiveState = nextState;
+    if (dashboardSourceMode === 'simulator') {
+      updateState(nextState, change);
+    }
   }
 
   function setMenu(open) {
@@ -1247,13 +2061,26 @@ const source = new EV.ApiSource();
   $('motion-toggle').checked = animations.enabled;
 
   navigate(location.hash.slice(1));
+  setCurrentLocalTimestamp($('manual-reading-form').elements.timestamp);
+  $('manual-history-source').value = 'manual';
+  updateManualSourceBanner(null);
+  EV.getManualHistory('manual', 100)
+    .then(history => {
+      manualRecords = history.submissions || [];
+      renderManualHistory(manualRecords);
+    })
+    .catch(error => {
+      $('manual-history-rows').innerHTML =
+        `<tr><td colspan="5" class="empty">History could not be loaded: ${escape(error.message)}</td></tr>`;
+      console.error('Initial manual history load failed:', error);
+    });
 
   if (animations.allowed()) {
     $('risk-progress').setAttribute('stroke-dashoffset', '100');
     $('health-progress').setAttribute('stroke-dashoffset', '100');
   }
 
-  const unsubscribe = source.subscribe(updateState);
+  const unsubscribe = source.subscribe(handleLiveSourceUpdate);
 
   animations.entrance();
   animations.refreshAmbient();
@@ -1324,6 +2151,345 @@ const source = new EV.ApiSource();
   listen($('reset-button'), 'click', () => {
     source.reset();
     toast('Reset to normal. Simulation paused; history retained.');
+  });
+
+  listen($('dashboard-source-mode'), 'change', event => {
+    dashboardSourceMode = event.target.value;
+    lastDiagnostic = null;
+    historyPage = 0;
+    $('manual-history-source').value = dashboardSourceMode === 'simulator'
+      ? 'manual'
+      : dashboardSourceMode;
+    if (dashboardSourceMode === 'simulator') {
+      source.start();
+      if (latestLiveState?.current) {
+        updateState(latestLiveState, {});
+      }
+    } else {
+      source.pause();
+      loadManualDashboard(dashboardSourceMode);
+    }
+  });
+
+  listen($('manual-history-source'), 'change', async event => {
+    try {
+      const history = await EV.getManualHistory(event.target.value, 300);
+      manualRecords = history.submissions || [];
+      renderManualHistory(manualRecords);
+    } catch (error) {
+      toast('Could not load manual submission history: ' + error.message);
+      console.error('Manual history load error:', error);
+    }
+  });
+
+  document.querySelectorAll('[data-manual-mode]').forEach(tab => {
+    listen(tab, 'click', () => selectManualMode(tab.dataset.manualMode));
+  });
+
+  listen($('manual-reading-form'), 'submit', async event => {
+    event.preventDefault();
+    setManualBusy(true, 'Validating and processing this reading through the backend…');
+    $('manual-result-empty').hidden = false;
+    $('manual-result-content').hidden = true;
+    try {
+      const attempt = idempotentPayload(
+        manualPayloadFromForm($('manual-reading-form'), 'manual'),
+        pendingManualRequest
+      );
+      pendingManualRequest = attempt;
+      const record = await EV.submitManualReading(attempt.payload);
+      await showManualSubmission(
+        record,
+        record.submission_status === 'processed'
+          ? 'Manual reading was processed and persisted.'
+          : 'Input was rejected by server validation; details are shown below.'
+      );
+    } catch (error) {
+      $('manual-result-empty').textContent =
+        'Submission failed: ' + error.message;
+      $('manual-result-status').className = 'pill critical';
+      $('manual-result-status').textContent = 'Request failed';
+      toast('Could not submit manual reading: ' + error.message);
+      console.error('Manual reading submission error:', error);
+    } finally {
+      setManualBusy(false);
+    }
+  });
+
+  listen($('manual-reset-form'), 'click', () => {
+    $('manual-reading-form').reset();
+    setCurrentLocalTimestamp($('manual-reading-form').elements.timestamp);
+    $('manual-result-content').hidden = true;
+    $('manual-result-empty').hidden = false;
+    $('manual-result-empty').textContent =
+      'Submit a reading or validated CSV to see the server-side assessment, rules, model compatibility, and evidence here.';
+    $('manual-result-status').className = 'pill offline';
+    $('manual-result-status').textContent = 'No submission yet';
+  });
+
+  listen($('manual-clear-results'), 'click', () => {
+    $('manual-result-content').hidden = true;
+    $('manual-result-empty').hidden = false;
+    $('manual-result-empty').textContent =
+      'Results cleared from this panel. Persisted submissions and diagnostic history were not deleted.';
+    $('manual-result-status').className = 'pill offline';
+    $('manual-result-status').textContent = 'Results cleared';
+  });
+
+  listen($('manual-preview-csv'), 'click', () => validateCsvPreview());
+
+  listen($('manual-csv-file'), 'change', async event => {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      $('manual-csv-input').value = await file.text();
+      validateCsvPreview();
+    } catch (error) {
+      $('manual-csv-summary').textContent =
+        'Could not read selected file: ' + error.message;
+      toast('Could not read CSV file: ' + error.message);
+    }
+  });
+
+  listen($('manual-preview-rows'), 'change', event => {
+    const checkbox = event.target.closest('input[data-csv-row]');
+    if (!checkbox) return;
+    const row = manualCsvPreview.find(item =>
+      String(item.line) === checkbox.dataset.csvRow
+    );
+    if (row) row.selected = checkbox.checked;
+    renderCsvPreview();
+  });
+
+  listen($('manual-submit-batch'), 'click', async () => {
+    const baseRows = manualCsvPreview
+      .filter(item => item.selected && !item.errors.length)
+      .map(item => ({
+        ...item.row,
+        source: 'manual',
+        units: { voltage: 'V', current: 'A', temperature: '°C' }
+      }));
+    if (!baseRows.length) return;
+    const signature = JSON.stringify(baseRows);
+    if (!pendingBatchRequest || pendingBatchRequest.signature !== signature) {
+      pendingBatchRequest = {
+        signature,
+        rows: baseRows.map(row => ({
+          ...row,
+          idempotency_key: newIdempotencyKey()
+        }))
+      };
+    }
+    const rows = pendingBatchRequest.rows;
+    setManualBusy(true, 'Submitting ' + rows.length +
+      ' selected CSV rows in chronological order…');
+    try {
+      const response = await EV.submitManualBatch(rows);
+      const selectedPreview = manualCsvPreview.filter(item =>
+        item.selected && !item.errors.length
+      );
+      response.results.forEach((item, index) => {
+        const preview = selectedPreview[index];
+        if (!preview) return;
+        preview.selected = false;
+        preview.submitted = item.submission_status;
+        if (item.submission_status !== 'processed') {
+          preview.errors = [
+            ...(item.result?.errors || []).map(error =>
+              error.field + ': ' + error.message
+            ),
+            'Edit the CSV and validate again before retrying.'
+          ];
+        }
+      });
+      renderCsvPreview();
+      pendingBatchRequest = null;
+      const processed = response.results.filter(item =>
+        item.submission_status === 'processed'
+      );
+      const latest = processed[processed.length - 1] ||
+        response.results[response.results.length - 1];
+      if (latest) await showManualSubmission(latest);
+      $('manual-csv-summary').textContent =
+        response.processed + ' processed, ' + response.invalid +
+        ' invalid out of ' + response.submitted +
+        ' selected row(s). Invalid rows remain visible in the preview; edit and revalidate to retry.';
+      toast('CSV batch complete: ' + response.processed +
+        ' processed, ' + response.invalid + ' invalid.');
+    } catch (error) {
+      $('manual-csv-summary').textContent =
+        'Batch submission failed: ' + error.message;
+      toast('Could not submit CSV batch: ' + error.message);
+      console.error('Manual batch submission error:', error);
+    } finally {
+      setManualBusy(false);
+    }
+  });
+
+  listen($('manual-preset-select'), 'change', event => {
+    populatePreset(event.target.value);
+  });
+
+  listen($('manual-submit-preset'), 'click', async () => {
+    const preset = $('manual-preset-select').value;
+    if (!preset) return;
+    $('manual-submit-preset').disabled = true;
+    $('manual-result-status').className = 'pill warning';
+    $('manual-result-status').textContent = 'Submitting…';
+    $('manual-result-empty').hidden = false;
+    $('manual-result-empty').textContent =
+      'Submitting simulated example through the same backend pipeline…';
+    try {
+      let response;
+      if (preset === 'can-activity') {
+        const oldPreview = manualCsvPreview;
+        const preview = validateCsvPreview(
+          $('manual-preset-csv').value,
+          false
+        );
+        const baseRows = preview.filter(item => !item.errors.length).map(item => ({
+          ...item.row,
+          source: 'preset_simulated',
+          units: { voltage: 'V', current: 'A', temperature: '°C' }
+        }));
+        manualCsvPreview = oldPreview;
+        if (baseRows.length !== 6) {
+          throw new Error('CAN activity preset must contain six valid, editable DBC frames.');
+        }
+        const signature = JSON.stringify(baseRows);
+        if (!pendingBatchRequest || pendingBatchRequest.signature !== signature) {
+          pendingBatchRequest = {
+            signature,
+            rows: baseRows.map(row => ({
+              ...row,
+              idempotency_key: newIdempotencyKey()
+            }))
+          };
+        }
+        const rows = pendingBatchRequest.rows;
+        response = await EV.submitManualBatch(rows);
+        pendingBatchRequest = null;
+        const processed = response.results.filter(item =>
+          item.submission_status === 'processed'
+        );
+        const latest = processed[processed.length - 1] ||
+          response.results[response.results.length - 1];
+        if (latest) await showManualSubmission(latest);
+        $('manual-csv-summary').textContent =
+          response.processed + ' processed, ' + response.invalid +
+          ' invalid CAN activity rows.';
+        toast('Simulated CAN burst submitted: ' + response.processed +
+          ' processed, ' + response.invalid + ' invalid.');
+      } else {
+        const basePayload = {
+          source: 'preset_simulated',
+          timestamp: new Date(
+            $('manual-preset-timestamp').value
+          ).toISOString(),
+          voltage: $('manual-preset-voltage').value === ''
+            ? null : Number($('manual-preset-voltage').value),
+          current: $('manual-preset-current').value === ''
+            ? null : Number($('manual-preset-current').value),
+          temperature: $('manual-preset-temperature').value === ''
+            ? null : Number($('manual-preset-temperature').value),
+          units: { voltage: 'V', current: 'A', temperature: '°C' }
+        };
+        const attempt = idempotentPayload(
+          basePayload,
+          pendingManualRequest
+        );
+        pendingManualRequest = attempt;
+        response = await EV.submitManualReading(attempt.payload);
+        await showManualSubmission(
+          response,
+          response.submission_status === 'processed'
+            ? 'Simulated preset was processed and persisted.'
+            : 'Preset rejected by server validation; details are shown below.'
+        );
+      }
+    } catch (error) {
+      $('manual-result-empty').textContent =
+        'Preset submission failed: ' + error.message;
+      $('manual-result-status').className = 'pill critical';
+      $('manual-result-status').textContent = 'Request failed';
+      toast('Could not submit simulated preset: ' + error.message);
+      console.error('Manual preset submission error:', error);
+    } finally {
+      $('manual-submit-preset').disabled = !$('manual-preset-select').value;
+    }
+  });
+
+  listen($('manual-history-rows'), 'click', event => {
+    const row = event.target.closest('tr[data-manual-key]');
+    if (!row) return;
+    const record = manualRecords.find(item =>
+      item.idempotency_key === row.dataset.manualKey
+    );
+    if (record) {
+      manualSelectedKey = record.idempotency_key;
+      renderManualResult(record);
+    }
+  });
+
+  listen($('manual-history-rows'), 'keydown', event => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    const row = event.target.closest('tr[data-manual-key]');
+    if (!row) return;
+    event.preventDefault();
+    const record = manualRecords.find(item =>
+      item.idempotency_key === row.dataset.manualKey
+    );
+    if (record) renderManualResult(record);
+  });
+
+  listen($('fault-lab-start'), 'click', async () => {
+    const button = $('fault-lab-start');
+    button.disabled = true;
+    try {
+      const result = await EV.startFaultLab(
+        $('fault-lab-scenario').value
+      );
+      if (result.active && result.active.scenario.component) {
+        twin.select(result.active.scenario.component);
+      }
+      source.start();
+      toast((result.active?.scenario_name || 'Fault scenario') + ' started.');
+    } catch (error) {
+      console.error('Fault simulation start error:', error);
+      toast('Could not start scenario: ' + error.message);
+      button.disabled = false;
+    }
+  });
+
+  listen($('fault-lab-stop'), 'click', async () => {
+    $('fault-lab-stop').disabled = true;
+    try {
+      const result = await EV.stopFaultLab();
+      source.refresh();
+      toast(
+        result.latest?.detected === false
+          ? 'Scenario stopped; no detector result was recorded.'
+          : 'Scenario stopped. Reset to Normal to record recovery.'
+      );
+    } catch (error) {
+      console.error('Fault simulation stop error:', error);
+      toast('Could not stop scenario: ' + error.message);
+      $('fault-lab-stop').disabled = false;
+    }
+  });
+
+  listen($('fault-lab-reset'), 'click', async () => {
+    $('fault-lab-reset').disabled = true;
+    try {
+      await EV.resetFaultLab();
+      twin.clearSelection();
+      source.refresh();
+      toast('Fault scenario reset to normal operation.');
+    } catch (error) {
+      console.error('Fault simulation reset error:', error);
+      toast('Could not reset scenario: ' + error.message);
+      $('fault-lab-reset').disabled = false;
+    }
   });
 
   listen($('reset-view'), 'click', () => {

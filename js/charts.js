@@ -262,6 +262,22 @@
       this.sparklines(state.readings.slice(-28));
     }
 
+    clear() {
+      this.state = null;
+      document.getElementById('sample-count').textContent = '0 samples';
+      if (this.chart) {
+        this.chart.data.datasets.forEach(dataset => {
+          dataset.data = [];
+        });
+        this.chart.update('none');
+      } else {
+        this.drawFallback([]);
+      }
+      document.querySelectorAll('[data-spark]').forEach(svg => {
+        svg.querySelector('path').setAttribute('d', '');
+      });
+    }
+
     setRange(minutes) {
       if (![1, 5, 30].includes(Number(minutes))) return;
 
@@ -370,9 +386,15 @@
       }
 
       series.forEach(item => {
-        const path = readings.map((reading, index) => {
-          const command = index ? 'L' : 'M';
-
+        let started = false;
+        const path = readings.map(reading => {
+          const value = reading[item.key];
+          if (!Number.isFinite(value)) {
+            started = false;
+            return '';
+          }
+          const command = started ? 'L' : 'M';
+          started = true;
           const x = (
             left +
             (reading.timestamp - x0) /
@@ -382,13 +404,13 @@
 
           const y = (
             top +
-            (item.max - reading[item.key]) /
+            (item.max - value) /
             (item.max - item.min) *
             plotH
           ).toFixed(2);
 
           return `${command}${x},${y}`;
-        }).join(' ');
+        }).filter(Boolean).join(' ');
 
         parts.push(
           `<path

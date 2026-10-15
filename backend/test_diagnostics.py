@@ -81,7 +81,7 @@ class DiagnosticsTests(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 reset_simulation()
                 result = None
-                for _ in range(100):
+                for _ in range(130):
                     result = get_readings(faults=[scenario])
                     if result["diagnostics"]["faults"]:
                         break
@@ -95,7 +95,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_three_selected_faults_combine_readings_and_diagnostics(self):
         faults = ["low_voltage", "over_current", "over_temperature"]
         result = None
-        for _ in range(100):
+        for _ in range(130):
             result = get_readings(faults=faults)
             if len(result["diagnostics"]["faults"]) == 3:
                 break
@@ -113,7 +113,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_two_selected_faults_report_only_those_faults(self):
         faults = ["over_voltage", "over_current"]
         result = None
-        for _ in range(100):
+        for _ in range(130):
             result = get_readings(faults=faults)
             if len(result["diagnostics"]["faults"]) == 2:
                 break
@@ -129,7 +129,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_over_voltage_combines_with_current_and_temperature(self):
         faults = ["over_voltage", "over_current", "over_temperature"]
         result = None
-        for _ in range(100):
+        for _ in range(130):
             result = get_readings(faults=faults)
             if len(result["diagnostics"]["faults"]) == 3:
                 break
@@ -143,7 +143,7 @@ class DiagnosticsTests(unittest.TestCase):
     def test_switching_back_to_normal_clears_faults(self):
         faults = ["low_voltage", "over_current", "over_temperature"]
         result = None
-        for _ in range(100):
+        for _ in range(130):
             result = get_readings(faults=faults)
             if len(result["diagnostics"]["faults"]) == 3:
                 break

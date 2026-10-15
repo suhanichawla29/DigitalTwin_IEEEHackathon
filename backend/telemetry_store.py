@@ -35,10 +35,26 @@ class TelemetryStore:
                     source TEXT NOT NULL,
                     can_id TEXT,
                     decoded_signals_json TEXT,
+                    scenario_run_id TEXT,
+                    scenario_name TEXT,
                     UNIQUE (episode_id, sample_index)
                 )
                 """
             )
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(telemetry_history)"
+                )
+            }
+            if "scenario_run_id" not in columns:
+                connection.execute(
+                    "ALTER TABLE telemetry_history ADD COLUMN scenario_run_id TEXT"
+                )
+            if "scenario_name" not in columns:
+                connection.execute(
+                    "ALTER TABLE telemetry_history ADD COLUMN scenario_name TEXT"
+                )
             connection.execute(
                 """
                 CREATE INDEX IF NOT EXISTS idx_telemetry_history_timestamp
@@ -70,6 +86,8 @@ class TelemetryStore:
         source,
         can_id=None,
         decoded_signals=None,
+        scenario_run_id=None,
+        scenario_name=None,
     ):
         if not isinstance(sample_id, str) or not sample_id.strip():
             raise ValueError("sample_id must be a non-empty string")
@@ -85,6 +103,10 @@ class TelemetryStore:
             raise ValueError("can_id must be a string or null")
         if decoded_signals is not None and not isinstance(decoded_signals, list):
             raise ValueError("decoded_signals must be an array or null")
+        if scenario_run_id is not None and not isinstance(scenario_run_id, str):
+            raise ValueError("scenario_run_id must be a string or null")
+        if scenario_name is not None and not isinstance(scenario_name, str):
+            raise ValueError("scenario_name must be a string or null")
 
         row = (
             sample_id.strip(),
@@ -97,6 +119,8 @@ class TelemetryStore:
             source.strip(),
             can_id,
             json.dumps(decoded_signals, allow_nan=False),
+            scenario_run_id,
+            scenario_name,
         )
         with closing(self._connect()) as connection:
             cursor = connection.execute(
@@ -104,23 +128,29 @@ class TelemetryStore:
                 INSERT OR IGNORE INTO telemetry_history (
                     sample_id, episode_id, sample_index, timestamp,
                     voltage, current, temperature, source, can_id,
-                    decoded_signals_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    decoded_signals_json, scenario_run_id, scenario_name
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 row,
             )
             connection.commit()
             return cursor.rowcount == 1
 
-    def recent_readings(self, *, limit=300, before=None):
+    def recent_readings(self, *, limit=300, before=None, source=None):
         if isinstance(limit, bool) or not isinstance(limit, int) or limit < 1:
             raise ValueError("limit must be a positive integer")
         parameters = []
-        where = ""
+        clauses = []
         if before is not None:
             before_timestamp = self._finite_number(before, "before")
-            where = "WHERE timestamp <= ?"
+            clauses.append("timestamp <= ?")
             parameters.append(before_timestamp)
+        if source is not None:
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError("source must be a non-empty string or null")
+            clauses.append("source = ?")
+            parameters.append(source.strip())
+        where = "WHERE " + " AND ".join(clauses) if clauses else ""
         parameters.append(limit)
         with closing(self._connect()) as connection:
             connection.row_factory = sqlite3.Row
@@ -128,7 +158,7 @@ class TelemetryStore:
                 f"""
                 SELECT sample_id, episode_id, sample_index, timestamp,
                        voltage, current, temperature, source, can_id,
-                       decoded_signals_json
+                       decoded_signals_json, scenario_run_id, scenario_name
                 FROM telemetry_history
                 {where}
                 ORDER BY timestamp DESC, sample_index DESC
@@ -151,12 +181,20 @@ class TelemetryStore:
             results.append(item)
         return results
 
-    def count(self, *, before=None):
-        query = "SELECT COUNT(*) FROM telemetry_history"
-        parameters = ()
+    def count(self, *, before=None, source=None):
+        clauses = []
+        parameters = []
         if before is not None:
-            query += " WHERE timestamp <= ?"
-            parameters = (self._finite_number(before, "before"),)
+            clauses.append("timestamp <= ?")
+            parameters.append(self._finite_number(before, "before"))
+        if source is not None:
+            if not isinstance(source, str) or not source.strip():
+                raise ValueError("source must be a non-empty string or null")
+            clauses.append("source = ?")
+            parameters.append(source.strip())
+        query = "SELECT COUNT(*) FROM telemetry_history"
+        if clauses:
+            query += " WHERE " + " AND ".join(clauses)
         with closing(self._connect()) as connection:
-            row = connection.execute(query, parameters).fetchone()
+            row = connection.execute(query, tuple(parameters)).fetchone()
         return int(row[0])
