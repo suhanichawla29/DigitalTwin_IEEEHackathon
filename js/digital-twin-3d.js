@@ -90,7 +90,7 @@ export function createViewer(container, options = {}) {
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 0.95;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.classList.add('twin-canvas');
@@ -121,10 +121,10 @@ export function createViewer(container, options = {}) {
   /* ---------------------------------------------------------------- */
   /* Lighting                                                         */
   /* ---------------------------------------------------------------- */
-  scene.add(new THREE.HemisphereLight(0x9ec9ff, 0x040a12, 1.15));
-  scene.add(new THREE.AmbientLight(0x22406a, 0.4));
+  scene.add(new THREE.HemisphereLight(0x9ec9ff, 0x040a12, 0.95));
+  scene.add(new THREE.AmbientLight(0x22406a, 0.35));
 
-  const keyLight = new THREE.DirectionalLight(0xffffff, 2.6);
+  const keyLight = new THREE.DirectionalLight(0xffffff, 2.1);
   keyLight.position.set(5, 8, 5);
   keyLight.castShadow = true;
   keyLight.shadow.mapSize.set(1024, 1024);
@@ -138,15 +138,15 @@ export function createViewer(container, options = {}) {
   keyLight.shadow.normalBias = 0.02;
   scene.add(keyLight);
 
-  const fillLight = new THREE.DirectionalLight(0x2ab6ff, 1.0);
+  const fillLight = new THREE.DirectionalLight(0x2ab6ff, 0.85);
   fillLight.position.set(-6, 3, -2.5);
   scene.add(fillLight);
 
-  const rimLight = new THREE.DirectionalLight(0xb07dff, 1.1);
+  const rimLight = new THREE.DirectionalLight(0xb07dff, 0.75);
   rimLight.position.set(-3, 2.5, 6);
   scene.add(rimLight);
 
-  const underGlow = new THREE.PointLight(0x00e6c3, 4, 7, 2);
+  const underGlow = new THREE.PointLight(0x00e6c3, 1.5, 7, 2);
   underGlow.position.set(0, 0.3, 0);
   scene.add(underGlow);
 
@@ -164,7 +164,7 @@ export function createViewer(container, options = {}) {
   /* Ground platform                                                  */
   /* ---------------------------------------------------------------- */
   const platform = new THREE.Mesh(
-    new THREE.CircleGeometry(3.7, 72),
+    new THREE.CircleGeometry(3.0, 72),
     new THREE.MeshStandardMaterial({
       color: 0x05111f,
       metalness: 0.35,
@@ -175,19 +175,19 @@ export function createViewer(container, options = {}) {
   platform.receiveShadow = true;
   scene.add(platform);
 
-  const grid = new THREE.PolarGridHelper(3.4, 8, 5, 64, 0x1a4a6b, 0x0e2a42);
+  const grid = new THREE.PolarGridHelper(2.9, 8, 5, 64, 0x1a4a6b, 0x0e2a42);
   grid.position.y = 0.003;
   grid.material.transparent = true;
-  grid.material.opacity = 0.55;
+  grid.material.opacity = 0.32;
   scene.add(grid);
 
   const glowTexture = makeGlowTexture();
   const glow = new THREE.Mesh(
-    new THREE.PlaneGeometry(7.5, 7.5),
+    new THREE.PlaneGeometry(6.2, 6.2),
     new THREE.MeshBasicMaterial({
       map: glowTexture,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.15,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     })
